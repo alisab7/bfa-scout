@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}BFA Scout{% endblock %}</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+  <meta name="theme-color" content="#C8102E">
+
+  <!-- Cairo font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS (CDN — build pipeline in Phase 2+) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand:  'var(--brand)',
+            accent: 'var(--accent)',
+          },
+          fontFamily: {
+            sans: ['Cairo', 'system-ui', '-apple-system', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- BFA CSS vars -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+
+  <!-- HTMX -->
+  <script src="https://unpkg.com/htmx.org@1.9.10" defer></script>
+
+  <!-- Alpine.js -->
+  <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+
+  {% block head %}{% endblock %}
+</head>
+<body class="h-full flex flex-col" style="background:var(--bg);color:var(--text);">
+
+  <!-- ── Top Nav ── -->
+  <nav style="background:var(--surface);border-bottom:1px solid var(--border);"
+       class="px-4 py-3 flex items-center justify-between shrink-0">
+
+    <!-- Left: BFA logo / wordmark -->
+    <a href="{{ url_for('index') }}" class="flex items-center gap-2 font-bold text-lg no-underline"
+       style="color:var(--text);">
+      <span style="color:var(--brand);">&#9651;</span>
+      <span>BFA Scout</span>
+    </a>
+
+    <!-- Right: role badge (Phase 1 will populate from current_user) -->
+    <div class="text-xs px-2 py-1 rounded font-medium"
+         style="background:var(--bg);color:var(--text-muted);border:1px solid var(--border);">
+      {# Phase 1: render current_user.role badge here when auth is wired up #}
+      &mdash;
+    </div>
+  </nav>
+
+  <!-- ── Main content ── -->
+  <main class="flex-1 w-full">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="max-w-2xl mx-auto px-4 pt-4 space-y-2">
+          {% for category, message in messages %}
+            <div class="rounded px-4 py-2 text-sm"
+                 style="background:var(--surface);border:1px solid var(--border);color:var(--text);">
+              {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- ── Footer ── -->
+  <footer class="text-center py-4 text-xs shrink-0"
+          style="color:var(--text-muted);border-top:1px solid var(--border);">
+    BFA Scouting &amp; Evaluation &mdash; National Team Committee
+  </footer>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

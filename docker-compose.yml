@@ -1,0 +1,37 @@
+version: "3.9"
+
+services:
+
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       bfa_scout
+      POSTGRES_USER:     bfa
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - bfa_scout_pgdata:/var/lib/postgresql/data
+      # Run schema on first DB startup (idempotent — uses IF NOT EXISTS)
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bfa"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # Port NOT exposed to host — internal only
+
+  web:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      DATABASE_URL: postgresql://bfa:${DB_PASSWORD}@db:5432/bfa_scout
+      SECRET_KEY:   ${SECRET_KEY}
+      FLASK_ENV:    ${FLASK_ENV:-development}
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  bfa_scout_pgdata:

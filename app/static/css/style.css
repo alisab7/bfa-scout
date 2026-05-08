@@ -1,0 +1,36 @@
+:root {
+  --brand:      #C8102E;
+  --accent:     #B5924C;
+  --bg:         #0E1116;
+  --surface:    #1A1F26;
+  --text:       #F2F2F2;
+  --text-muted: #9CA3AF;
+  --border:     #2A2F36;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Cairo', system-ui, -apple-system, sans-serif;
+}
+
+/* Utility extras */
+.text-brand   { color: var(--brand); }
+.text-accent  { color: var(--accent); }
+.text-muted   { color: var(--text-muted); }
+.bg-surface   { background: var(--surface); }
+.border-app   { border-color: var(--border); }
+
+/* BFA crest placeholder */
+.bfa-crest-placeholder {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.75rem;
+  margin: 0 auto 1.5rem;
+}
