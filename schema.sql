@@ -181,7 +181,7 @@ CREATE TABLE IF NOT EXISTS evaluations (
     -- match context (nullable: supports freestanding evals)
     -- match_id (Phase 5c-1) is the canonical link; match_label/_date/competition
     -- are legacy text fallbacks for evals not tied to a matches row.
-    match_id            INTEGER REFERENCES matches(id) ON DELETE SET NULL,
+    match_id            INTEGER,  -- FK added below after matches table: REFERENCES matches(id)
     match_label         VARCHAR(255),
     match_date          DATE,
     competition         VARCHAR(128),
@@ -302,6 +302,12 @@ CREATE INDEX IF NOT EXISTS idx_matches_lookup
 CREATE INDEX IF NOT EXISTS idx_matches_age_group ON matches (age_group);
 CREATE INDEX IF NOT EXISTS idx_matches_source    ON matches (source);
 CREATE INDEX IF NOT EXISTS idx_matches_date      ON matches (match_date);
+
+-- Deferred FK: evaluations.match_id → matches.id
+-- (evaluations is defined before matches, so FK must be added here)
+ALTER TABLE evaluations
+    ADD CONSTRAINT IF NOT EXISTS fk_evaluations_match_id
+    FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE SET NULL;
 
 
 -- =============================================================
