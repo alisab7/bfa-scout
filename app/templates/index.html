@@ -3,52 +3,122 @@
 {% block title %}BFA Scouting & Evaluation{% endblock %}
 
 {% block content %}
-<div class="flex flex-col items-center justify-center min-h-[80vh] px-4 py-12">
+{% if not current_user.is_authenticated %}
 
-  <!-- BFA crest placeholder -->
-  <div class="bfa-crest-placeholder">
-    <span style="color:var(--brand);font-weight:700;">BFA</span>
-  </div>
+  {# ── Anonymous landing ─────────────────────────────────────────── #}
+  <div class="flex flex-col items-center justify-center min-h-[80vh] px-4 py-12">
 
-  <!-- Hero -->
-  <div class="text-center max-w-md mx-auto md:max-w-2xl">
-    <h1 class="text-3xl md:text-4xl font-bold mb-3" style="color:var(--text);">
-      BFA Scouting &amp; Evaluation
-    </h1>
-    <p class="text-base md:text-lg mb-8" style="color:var(--text-muted);">
-      National Team Committee Platform
-    </p>
-
-    <!-- CTAs -->
-    <div class="flex flex-col sm:flex-row gap-3 justify-center">
-      <a href="{{ url_for('auth.index') }}"
-         class="inline-block px-6 py-3 rounded-lg font-semibold text-white text-center transition-opacity hover:opacity-90"
-         style="background:var(--brand);">
-        Sign In
-      </a>
-      <a href="#about"
-         class="inline-block px-6 py-3 rounded-lg font-semibold text-center transition-opacity hover:opacity-80"
-         style="background:var(--surface);color:var(--text);border:1px solid var(--border);">
-        Learn more
-      </a>
+    <!-- BFA crest placeholder -->
+    <div class="bfa-crest-placeholder">
+      <span style="color:var(--brand);font-weight:700;">BFA</span>
     </div>
+
+    <!-- Hero -->
+    <div class="text-center max-w-md mx-auto md:max-w-2xl">
+      <h1 class="text-3xl md:text-4xl font-bold mb-3" style="color:var(--text);">
+        BFA Scouting &amp; Evaluation
+      </h1>
+      <p class="text-base md:text-lg mb-8" style="color:var(--text-muted);">
+        National Team Committee Platform
+      </p>
+
+      <!-- CTAs -->
+      <div class="flex flex-col sm:flex-row gap-3 justify-center">
+        <a href="{{ url_for('auth.login') }}"
+           class="inline-block px-6 py-3 rounded-lg font-semibold text-white text-center transition-opacity hover:opacity-90"
+           style="background:var(--brand);">
+          Sign In
+        </a>
+        <a href="#about"
+           class="inline-block px-6 py-3 rounded-lg font-semibold text-center transition-opacity hover:opacity-80"
+           style="background:var(--surface);color:var(--text);border:1px solid var(--border);">
+          Learn more
+        </a>
+      </div>
+    </div>
+
+    <!-- About section -->
+    <div id="about" class="mt-20 max-w-md mx-auto md:max-w-2xl w-full">
+      <div class="rounded-xl p-6 md:p-8"
+           style="background:var(--surface);border:1px solid var(--border);">
+        <h2 class="text-xl font-bold mb-4" style="color:var(--accent);">About this platform</h2>
+        <p class="text-sm leading-relaxed mb-3" style="color:var(--text-muted);">
+          A unified scouting and evaluation system for BFA's National Team Committee.
+          Scouts evaluate players using position-aware forms; the platform fuses subjective
+          committee scores with objective Wyscout statistics into a unified Player Passport.
+        </p>
+        <p class="text-sm leading-relaxed" style="color:var(--text-muted);">
+          Built for stadium use &mdash; mobile-first, offline-capable, bilingual (EN / AR).
+        </p>
+      </div>
+    </div>
+
   </div>
 
-  <!-- About section -->
-  <div id="about" class="mt-20 max-w-md mx-auto md:max-w-2xl w-full">
-    <div class="rounded-xl p-6 md:p-8"
-         style="background:var(--surface);border:1px solid var(--border);">
-      <h2 class="text-xl font-bold mb-4" style="color:var(--accent);">About this platform</h2>
-      <p class="text-sm leading-relaxed mb-3" style="color:var(--text-muted);">
-        A unified scouting and evaluation system for BFA's National Team Committee.
-        Scouts evaluate players using position-aware forms; the platform fuses subjective
-        committee scores with objective Wyscout statistics into a unified Player Passport.
-      </p>
-      <p class="text-sm leading-relaxed" style="color:var(--text-muted);">
-        Built for stadium use &mdash; mobile-first, offline-capable, bilingual (EN / AR).
+{% else %}
+
+  {# ── Authenticated dashboard ───────────────────────────────────── #}
+  <div class="max-w-5xl mx-auto px-4 py-8 md:py-12">
+
+    <!-- Welcome -->
+    <div class="mb-8">
+      <h1 class="text-2xl md:text-3xl font-bold mb-1" style="color:var(--text);">
+        Welcome back, {{ current_user.full_name }}
+      </h1>
+      <p class="text-sm" style="color:var(--text-muted);">
+        Signed in as <span style="color:var(--accent);">{{ current_user.role | replace('_', ' ') | title }}</span>
       </p>
     </div>
+
+    <!-- Quick-action cards -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+
+      <!-- Players (all authenticated) -->
+      <a href="{{ url_for('players.list_players') }}"
+         class="block rounded-xl p-5 transition-opacity hover:opacity-90 no-underline"
+         style="background:var(--surface);border:1px solid var(--border);color:var(--text);">
+        <div class="flex items-center gap-3 mb-2">
+          <span class="text-2xl" style="color:var(--brand);">&#9651;</span>
+          <h2 class="text-lg font-semibold" style="color:var(--text);">Players</h2>
+        </div>
+        <p class="text-sm" style="color:var(--text-muted);">
+          Browse, create, and manage player profiles.
+        </p>
+      </a>
+
+      <!-- Wyscout (admin / technical_director) -->
+      {% if current_user.has_role('admin', 'technical_director') %}
+        <a href="{{ url_for('players.list_players') }}"
+           class="block rounded-xl p-5 transition-opacity hover:opacity-90 no-underline"
+           style="background:var(--surface);border:1px solid var(--border);color:var(--text);">
+          <div class="flex items-center gap-3 mb-2">
+            <span class="text-2xl" style="color:var(--accent);">&#x21F1;</span>
+            <h2 class="text-lg font-semibold" style="color:var(--text);">Wyscout Import</h2>
+          </div>
+          <p class="text-sm" style="color:var(--text-muted);">
+            Open a player profile to upload xlsx exports and review match stats.
+          </p>
+        </a>
+      {% endif %}
+
+      <!-- Users (admin only) -->
+      {% if current_user.has_role('admin') %}
+        <a href="{{ url_for('admin.users_list') }}"
+           class="block rounded-xl p-5 transition-opacity hover:opacity-90 no-underline"
+           style="background:var(--surface);border:1px solid var(--border);color:var(--text);">
+          <div class="flex items-center gap-3 mb-2">
+            <span class="text-2xl" style="color:#3B82F6;">&#9881;</span>
+            <h2 class="text-lg font-semibold" style="color:var(--text);">Users</h2>
+          </div>
+          <p class="text-sm" style="color:var(--text-muted);">
+            Manage user accounts, roles, and password resets.
+          </p>
+        </a>
+      {% endif %}
+
+    </div>
+
   </div>
 
-</div>
+{% endif %}
 {% endblock %}

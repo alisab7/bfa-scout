@@ -1,0 +1,291 @@
+{# Phase 6 — Player Passport PDF.
+   Rendered by WeasyPrint via app/passport/renderer.py. NO JavaScript —
+   WeasyPrint doesn't execute JS reliably. All chart rendering is
+   server-side SVG (see app/passport/radar_svg.py).
+
+   Vars in scope (from app/passport/data.py:get_passport_data):
+     - player              (dict)  bio + eligibility + position + club + photo_data_uri
+     - eligibility         (dict)  {icon, label, note}
+     - wyscout             (dict | None)  career stats + radar_scores
+     - wyscout_radar_svg   (str  | None)  SVG markup (rendered by route)
+     - latest_eval         (dict | None)
+     - evaluation_history  (list of dicts; possibly empty)
+     - meta                (dict)  {mode, generated_at, generator_name}
+
+   Public mode (`meta.mode == 'public'`): scout names already redacted
+   to 'Scout N' by the data layer. Admin notes are no longer rendered
+   in ANY mode (Phase 6.2.1) — they're admin scratchpad and don't
+   belong in user-facing artefacts. No additional redaction logic in
+   this template.
+
+   Phase 7: latest-eval + history-table rows carry an NT/Admin role
+   badge driven by `created_by_role`. Scouts viewing a passport never
+   see nt_staff evaluations (filtered at the SQL layer in
+   get_passport_data); the badge only fires for admin/TD/nt_staff/
+   viewer/anonymous viewers. #}
+{% from '_macros/evaluation_role_badge.html' import evaluation_role_badge %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>BFA-Scout Player Passport — {{ player.full_name }}</title>
+</head>
+<body>
+
+  {# ── Header ─────────────────────────────────────────────────── #}
+  <header class="passport-header">
+    <div class="brand">
+      <span class="brand-mark">BFA</span>
+      <span class="brand-text">Bahrain Football Association</span>
+    </div>
+    <h1>Player Passport
+      {% if meta.mode == 'public' %}<span class="badge-public">PUBLIC</span>{% endif %}
+    </h1>
+  </header>
+
+  {# ── Bio block ──────────────────────────────────────────────── #}
+  <section class="bio">
+    {% if player.photo_data_uri %}
+      <img class="player-photo" src="{{ player.photo_data_uri }}"
+           alt="{{ player.full_name }}">
+    {% else %}
+      <div class="player-photo placeholder">{{ player.full_name[:1] | upper }}</div>
+    {% endif %}
+
+    <div class="bio-text">
+      <h2 class="latin-name">{{ player.full_name }}</h2>
+      {% if player.full_name_ar %}
+        <h2 dir="rtl" class="ar-name">{{ player.full_name_ar }}</h2>
+      {% endif %}
+
+      <div class="bio-grid">
+        <div><span class="bio-k">DOB</span>
+          <span class="bio-v">
+            {% if player.dob %}{{ player.dob.strftime('%Y-%m-%d') }}
+              {% if player.age is not none %} · {{ player.age }}y{% endif %}
+            {% else %}—{% endif %}
+          </span>
+        </div>
+        <div><span class="bio-k">Position</span>
+          <span class="bio-v">
+            {{ player.position_name or '—' }}
+            {% if player.position_group_code %} ({{ player.position_group_code }}){% endif %}
+          </span>
+        </div>
+        <div><span class="bio-k">Club</span>
+          <span class="bio-v">
+            {{ player.club_name or player.current_club or 'Unaffiliated' }}
+            {% if player.club_division %} · {{ player.club_division | title }} Division{% endif %}
+          </span>
+        </div>
+        <div><span class="bio-k">Nationality</span>
+          <span class="bio-v">
+            {{ player.nationality_label or player.nationality or '—' }}
+            {# Phase 6.1: inline SVG flag (was Unicode emoji, unreliable in WeasyPrint). #}
+            {% if player.flag_svg %}
+              <span class="flag-inline">{{ player.flag_svg | safe }}</span>
+            {% endif %}
+          </span>
+        </div>
+        {% if player.height_cm or player.weight_kg %}
+          <div><span class="bio-k">Build</span>
+            <span class="bio-v">
+              {% if player.height_cm %}{{ player.height_cm }} cm{% endif %}
+              {% if player.height_cm and player.weight_kg %} · {% endif %}
+              {% if player.weight_kg %}{{ player.weight_kg }} kg{% endif %}
+            </span>
+          </div>
+        {% endif %}
+        <div><span class="bio-k">National ID</span>
+          <span class="bio-v">{{ player.national_id or '—' }}</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {# ── Eligibility card ───────────────────────────────────────── #}
+  <section class="eligibility">
+    <h3>National-Team Eligibility</h3>
+    <div class="elig-row">
+      <span class="elig-icon">{{ eligibility.icon }}</span>
+      <span class="elig-label">{{ eligibility.label }}</span>
+    </div>
+    {% if eligibility.note %}
+      <p class="elig-note">{{ eligibility.note }}</p>
+    {% endif %}
+    {# Phase 6.2.2 — Item 1: age at eligibility for foreign_residency players
+       with a future elig date and known DOB. Only rendered when non-None. #}
+    {% if eligibility.age_at_eligibility is not none %}
+      <p class="elig-age">Age at eligibility: <strong>{{ eligibility.age_at_eligibility }}</strong></p>
+    {% endif %}
+    {# Phase 6.2.1: admin notes (eligibility_notes_admin /
+       bahrain_residency_notes) no longer rendered. They're admin
+       scratchpad authored on the /players/<id>/edit form and stay in
+       the DB columns, but they don't belong in any user-facing
+       artefact — formal documents in particular. Removal applies to
+       BOTH full and public modes; the data layer's public-mode scrub
+       in app/passport/data.py is now redundant but kept as
+       belt-and-braces. #}
+  </section>
+
+  {# ── Wyscout block ──────────────────────────────────────────── #}
+  {% if wyscout %}
+    <section class="wyscout">
+      <h3>Wyscout Career Statistics</h3>
+      {% if wyscout.season_subtitle %}
+        <p class="stats-subtitle">{{ wyscout.season_subtitle }}</p>
+      {% endif %}
+      <div class="wyscout-grid">
+        <div class="stats-table">
+          <table>
+            <tr><th>Matches</th>
+                <td>{{ wyscout.matches }}</td></tr>
+            <tr><th>Minutes</th>
+                <td>{{ wyscout.minutes }}</td></tr>
+            <tr><th>Goals</th>
+                <td>{{ wyscout.goals }}</td></tr>
+            <tr><th>Assists</th>
+                <td>{{ wyscout.assists }}</td></tr>
+            <tr><th>Shots</th>
+                <td>{{ wyscout.shots }}</td></tr>
+            <tr><th>xG</th>
+                <td>{{ '%.2f' | format(wyscout.xg) }}</td></tr>
+            <tr><th>Pass %</th>
+                <td>{% if wyscout.pass_pct is not none %}{{ '%.1f' | format(wyscout.pass_pct) }}%{% else %}—{% endif %}</td></tr>
+            <tr><th>Duels won %</th>
+                <td>{% if wyscout.duels_won_pct is not none %}{{ '%.1f' | format(wyscout.duels_won_pct) }}%{% else %}—{% endif %}</td></tr>
+            <tr><th>Aerial won %</th>
+                <td>{% if wyscout.aerial_won_pct is not none %}{{ '%.1f' | format(wyscout.aerial_won_pct) }}%{% else %}—{% endif %}</td></tr>
+            <tr><th>Yellow / Red</th>
+                <td>{{ wyscout.yellows }} / {{ wyscout.reds }}</td></tr>
+          </table>
+        </div>
+        {% if wyscout_radar_svg %}
+          <div class="radar">{{ wyscout_radar_svg | safe }}</div>
+        {% endif %}
+      </div>
+    </section>
+  {% else %}
+    <section class="wyscout-empty">
+      <h3>Wyscout Career Statistics</h3>
+      <p class="empty-state">No Wyscout data on file.</p>
+    </section>
+  {% endif %}
+
+  {# Phase 6.1: page-break removed. The previous explicit
+     <div class="page-break"> forced a break before scout-section even
+     when the radar got pushed to its own page, producing 3 pages. With
+     natural pagination + page-break-inside on the scout panels, the
+     PDF settles at 2 pages: page 1 = bio/eligibility/stats(+radar if
+     room), page 2 = radar(if not on 1) + scout assessment. #}
+
+  {# ── Scout evaluations ──────────────────────────────────────── #}
+  {% if evaluation_history %}
+    <section class="scout-section">
+      <h3>Scout Assessment
+        <span class="count">
+          ({{ evaluation_history | length }} evaluation{{ '' if evaluation_history|length == 1 else 's' }})
+        </span>
+      </h3>
+
+      {% if latest_eval %}
+        <div class="latest-eval">
+          <h4>Latest evaluation</h4>
+          <p class="eval-meta">
+            {{ latest_eval.evaluator_name }}{{ evaluation_role_badge(latest_eval.created_by_role) }}
+            {% if latest_eval.submitted_at %}
+              · {{ latest_eval.submitted_at.strftime('%Y-%m-%d') }}
+            {% endif %}
+            {% if latest_eval.match_label %}
+              · {{ latest_eval.match_label }}
+            {% endif %}
+          </p>
+          <div class="badge-row">
+            {% if latest_eval.nt_readiness_level %}
+              <span class="badge nt-level">
+                {{ latest_eval.nt_readiness_level | upper | replace('_', ' ') }}
+              </span>
+            {% endif %}
+            {% if latest_eval.recommendation %}
+              <span class="badge rec">
+                {{ latest_eval.recommendation | replace('_', ' ') | title }}
+              </span>
+            {% endif %}
+          </div>
+
+          <div class="cat-averages">
+            {% for cat_code, cat_label in [
+                ('TECH','Technical'), ('TACT','Tactical'),
+                ('PHYS','Physical'), ('MENT','Mentality')
+            ] %}
+              {% set avg = latest_eval.category_averages.get(cat_code) %}
+              <div class="cat-row">
+                <span class="cat-label">{{ cat_label }}</span>
+                <div class="bar-bg">
+                  {% if avg is not none %}
+                    <div class="bar-fill"
+                         style="width: {{ (avg / 10 * 100) | round(1) }}%;"></div>
+                  {% endif %}
+                </div>
+                <span class="cat-value">
+                  {% if avg is not none %}{{ '%.1f' | format(avg) }}{% else %}—{% endif %}
+                </span>
+              </div>
+            {% endfor %}
+          </div>
+
+          {% if latest_eval.summary %}
+            <p class="summary">
+              {{ latest_eval.summary[:500] }}{% if latest_eval.summary | length > 500 %}…{% endif %}
+            </p>
+          {% endif %}
+        </div>
+      {% endif %}
+
+      {# Recent history table — show up to 5 (latest is shown above too,
+         but the table gives the at-a-glance "trend" view). #}
+      {% if evaluation_history | length > 0 %}
+        <div class="history">
+          <h4>Recent evaluations</h4>
+          <table class="history-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Scout</th>
+                <th>Match</th>
+                <th>NT Level</th>
+                <th>Recommendation</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for ev in evaluation_history[:5] %}
+                <tr>
+                  <td>{% if ev.submitted_at %}{{ ev.submitted_at.strftime('%Y-%m-%d') }}{% else %}—{% endif %}</td>
+                  <td>{{ ev.evaluator_name }}{{ evaluation_role_badge(ev.created_by_role) }}</td>
+                  <td>{{ ev.match_label }}</td>
+                  <td>{% if ev.nt_readiness_level %}{{ ev.nt_readiness_level | upper | replace('_', ' ') }}{% else %}—{% endif %}</td>
+                  <td>{% if ev.recommendation %}{{ ev.recommendation | replace('_', ' ') | title }}{% else %}—{% endif %}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+    </section>
+  {% else %}
+    <section class="scout-empty">
+      <h3>Scout Assessment</h3>
+      <p class="empty-state">No scout evaluations on file yet.</p>
+    </section>
+  {% endif %}
+
+  {# ── Footer ─────────────────────────────────────────────────── #}
+  <footer>
+    Generated {{ meta.generated_at.strftime('%Y-%m-%d %H:%M UTC') }}
+    {% if meta.generator_name %} by {{ meta.generator_name }}{% endif %}
+    · BFA-Scout Player Passport v1
+    {% if meta.mode == 'public' %} · Public version — scout identities redacted{% endif %}
+  </footer>
+
+</body>
+</html>

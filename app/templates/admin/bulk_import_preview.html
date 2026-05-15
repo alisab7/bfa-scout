@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block title %}Bulk Import Preview — BFA Scout{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 py-8">
+
+  <a href="{{ url_for('admin.bulk_import_index') }}"
+     class="text-sm mb-4 inline-block" style="color:var(--text-muted);">&larr; Upload</a>
+
+  <h1 class="text-2xl font-bold mb-2" style="color:var(--text);">
+    Bulk Import Preview
+  </h1>
+  <p class="text-sm mb-4" style="color:var(--text-muted);">
+    Parsed <code>{{ file_name }}</code> — {{ summary.total }} row{{ '' if summary.total == 1 else 's' }}.
+  </p>
+
+  {# ── Summary panel ─────────────────────────────────────────────── #}
+  <div class="rounded-xl p-4 mb-6"
+       style="background:var(--surface);border:1px solid var(--border);">
+    <div class="flex flex-wrap gap-4 text-sm">
+      <span><strong class="bulk-create">{{ summary.valid }}</strong> valid (will create)</span>
+      <span><strong class="bulk-dup">{{ summary.duplicate }}</strong> duplicate (skip/update per row)</span>
+      <span><strong class="bulk-invalid">{{ summary.invalid }}</strong> invalid (will skip)</span>
+      <span style="color:var(--text-muted);">
+        ≤ <strong>{{ summary.to_import }}</strong> total rows to import
+      </span>
+    </div>
+    {% if summary.unknown_columns %}
+      <p class="text-xs mt-3" style="color:var(--text-muted);">
+        ⚠ Ignored unknown columns:
+        {% for col in summary.unknown_columns %}<code>{{ col }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
+      </p>
+    {% endif %}
+  </div>
+
+  {# ── Preview + commit form ──────────────────────────────────────── #}
+  <form action="{{ url_for('admin.bulk_import_commit') }}" method="POST"
+        class="rounded-xl overflow-hidden"
+        style="background:var(--surface);border:1px solid var(--border);">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm bulk-preview-table">
+        <thead>
+          <tr style="background:var(--bg);border-bottom:1px solid var(--border);">
+            <th class="px-3 py-2 text-left">Row</th>
+            <th class="px-3 py-2 text-left">Status</th>
+            <th class="px-3 py-2 text-left">Full Name</th>
+            <th class="px-3 py-2 text-left">DOB</th>
+            <th class="px-3 py-2 text-left">National&nbsp;ID</th>
+            <th class="px-3 py-2 text-left">Position</th>
+            <th class="px-3 py-2 text-left">Action / Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+            <tr class="row-{{ r.status }}">
+              <td class="px-3 py-2">{{ r.row_number }}</td>
+              <td class="px-3 py-2">
+                {% if r.status == 'valid' %}
+                  <span class="badge-ok">CREATE</span>
+                {% elif r.status == 'duplicate' %}
+                  <span class="badge-warn">DUPLICATE</span>
+                {% elif r.status == 'invalid' %}
+                  <span class="badge-err">INVALID</span>
+                {% endif %}
+              </td>
+              <td class="px-3 py-2">{{ r.fields.full_name or '—' }}</td>
+              <td class="px-3 py-2">{{ r.fields.dob or '—' }}</td>
+              <td class="px-3 py-2">{{ r.fields.national_id or '—' }}</td>
+              <td class="px-3 py-2">{{ r.fields.primary_position_code or '—' }}</td>
+              <td class="px-3 py-2">
+                {% if r.status == 'duplicate' %}
+                  <select name="row_{{ r.row_number }}_action"
+                          class="text-xs">
+                    <option value="skip" selected>Skip (default)</option>
+                    <option value="update">Update existing</option>
+                  </select>
+                  <span class="text-xs" style="color:var(--text-muted);">
+                    matches player #{{ r.duplicate_of }}
+                  </span>
+                {% elif r.status == 'invalid' %}
+                  <span class="text-xs" style="color:#C8102E;">
+                    {{ r.errors | join('; ') }}
+                  </span>
+                {% endif %}
+                {% if r.warnings %}
+                  <div class="text-xs mt-1" style="color:#B5924C;">
+                    ⚠ {{ r.warnings | join('; ') }}
+                  </div>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="flex justify-end gap-2 p-4"
+         style="border-top:1px solid var(--border);">
+      <a href="{{ url_for('admin.bulk_import_discard') }}"
+         class="px-4 py-2 rounded text-sm font-semibold"
+         style="background:var(--bg);color:var(--text);border:1px solid var(--border);">
+        Discard
+      </a>
+      <button type="submit"
+              class="px-5 py-2 rounded text-sm font-semibold text-white"
+              style="background:var(--brand);">
+        Confirm import
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,13 @@
+# Phase 8 — origin TLS cert location.
+#
+# The self-signed origin cert + key are generated ON THE DROPLET (see
+# DEPLOY.md "First deploy"):
+#
+#   openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+#       -keyout nginx/certs/origin.key \
+#       -out    nginx/certs/origin.crt \
+#       -subj "/CN=bfa-scout"
+#
+# origin.crt / origin.key / *.pem are .gitignored — NEVER committed.
+# This .gitkeep only exists so the directory ships in git and the
+# compose bind-mount (./nginx/certs:/etc/nginx/certs:ro) has a target.

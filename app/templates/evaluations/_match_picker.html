@@ -1,0 +1,218 @@
+{# Match dropdown + inline-create modal.
+   Vars in scope: matches (list), selected_match_id (int or None),
+                  recent_match_limit (int).
+#}
+<div x-data="matchPicker()" class="space-y-2">
+  <label class="block text-sm font-medium mb-1" style="color:var(--text-muted);">
+    Match <span style="color:var(--brand);">*</span>
+  </label>
+  <select name="match_id"
+          x-ref="matchSelect"
+          class="w-full px-3 py-2 rounded text-sm"
+          style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+    <option value="">— Select a match —</option>
+    {% for m in matches %}
+      <option value="{{ m.id }}"
+              {% if selected_match_id is not none and m.id == selected_match_id %}selected{% endif %}>
+        {{ m.match_date.strftime('%Y-%m-%d') }} · {{ m.home_team }} vs {{ m.away_team }}
+        {% if m.competition %} ({{ m.competition }}){% endif %}
+      </option>
+    {% endfor %}
+  </select>
+  <p class="text-xs" style="color:var(--text-muted);">
+    Showing the {{ matches|length }} most recent of up to {{ recent_match_limit }}.
+    Match not listed?
+    <button type="button"
+            @click="showModal = true"
+            class="underline"
+            style="color:var(--accent);">Add new match</button>
+  </p>
+
+  {# ── Inline-create modal ─────────────────────────────────────── #}
+  <div x-show="showModal"
+       x-cloak
+       style="display:none;"
+       class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+    <div class="rounded-xl p-6 max-w-md w-full"
+         style="background:var(--surface);border:1px solid var(--border);">
+      <h3 class="font-bold text-lg mb-4" style="color:var(--text);">Add a new match</h3>
+
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs uppercase tracking-wide mb-1" style="color:var(--text-muted);">
+            Date <span style="color:var(--brand);">*</span>
+          </label>
+          <input type="date" x-model="form.match_date"
+                 class="w-full px-3 py-2 rounded text-sm"
+                 style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+          <p class="text-xs mt-1" style="color:var(--brand);" x-text="errors.match_date"></p>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs uppercase tracking-wide mb-1" style="color:var(--text-muted);">
+              Home team <span style="color:var(--brand);">*</span>
+            </label>
+            <input type="text" x-model="form.home_team"
+                   class="w-full px-3 py-2 rounded text-sm"
+                   style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+            <p class="text-xs mt-1" style="color:var(--brand);" x-text="errors.home_team"></p>
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wide mb-1" style="color:var(--text-muted);">
+              Away team <span style="color:var(--brand);">*</span>
+            </label>
+            <input type="text" x-model="form.away_team"
+                   class="w-full px-3 py-2 rounded text-sm"
+                   style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+            <p class="text-xs mt-1" style="color:var(--brand);" x-text="errors.away_team"></p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs uppercase tracking-wide mb-1" style="color:var(--text-muted);">
+              Age group <span style="color:var(--brand);">*</span>
+            </label>
+            <select x-model="form.age_group"
+                    class="w-full px-3 py-2 rounded text-sm"
+                    style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+              <option value="">—</option>
+              <option value="senior">Senior</option>
+              <option value="u23">U23</option>
+              <option value="u20">U20</option>
+              <option value="u17">U17</option>
+            </select>
+            <p class="text-xs mt-1" style="color:var(--brand);" x-text="errors.age_group"></p>
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wide mb-1" style="color:var(--text-muted);">
+              Match type <span style="color:var(--brand);">*</span>
+            </label>
+            <select x-model="form.match_type"
+                    class="w-full px-3 py-2 rounded text-sm"
+                    style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+              <option value="">—</option>
+              <option value="league">League</option>
+              <option value="cup">Cup</option>
+              <option value="friendly">Friendly</option>
+              <option value="tournament">Tournament</option>
+              <option value="national_team">National team</option>
+            </select>
+            <p class="text-xs mt-1" style="color:var(--brand);" x-text="errors.match_type"></p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs uppercase tracking-wide mb-1" style="color:var(--text-muted);">Home score</label>
+            <input type="number" x-model="form.home_score" min="0" max="20"
+                   class="w-full px-3 py-2 rounded text-sm"
+                   style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wide mb-1" style="color:var(--text-muted);">Away score</label>
+            <input type="number" x-model="form.away_score" min="0" max="20"
+                   class="w-full px-3 py-2 rounded text-sm"
+                   style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs uppercase tracking-wide mb-1" style="color:var(--text-muted);">Competition</label>
+          <input type="text" x-model="form.competition"
+                 class="w-full px-3 py-2 rounded text-sm"
+                 style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+        </div>
+
+        <div>
+          <label class="block text-xs uppercase tracking-wide mb-1" style="color:var(--text-muted);">Notes</label>
+          <textarea x-model="form.notes" rows="2"
+                    class="w-full px-3 py-2 rounded text-sm"
+                    style="background:var(--bg);border:1px solid var(--border);color:var(--text);"></textarea>
+        </div>
+
+        <p class="text-xs" style="color:var(--brand);" x-text="globalError"></p>
+      </div>
+
+      <div class="flex items-center justify-end gap-3 mt-5 pt-3"
+           style="border-top:1px solid var(--border);">
+        <button type="button" @click="showModal = false; resetErrors()"
+                class="text-sm" style="color:var(--text-muted);">Cancel</button>
+        <button type="button"
+                @click="submitNewMatch()"
+                :disabled="submitting"
+                :class="submitting ? 'opacity-50 cursor-not-allowed' : ''"
+                class="px-4 py-2 rounded text-sm font-semibold text-white"
+                style="background:var(--brand);"
+                x-text="submitting ? 'Adding…' : 'Add match'"></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function matchPicker() {
+    return {
+      showModal: false,
+      submitting: false,
+      globalError: '',
+      errors: {},
+      form: {
+        match_date: '', home_team: '', away_team: '',
+        age_group: '', match_type: '',
+        home_score: '', away_score: '',
+        competition: '', notes: '',
+      },
+      resetErrors() {
+        this.errors = {};
+        this.globalError = '';
+      },
+      async submitNewMatch() {
+        this.resetErrors();
+        this.submitting = true;
+        try {
+          const fd = new FormData();
+          for (const k of Object.keys(this.form)) {
+            if (this.form[k] !== null && this.form[k] !== undefined && this.form[k] !== '') {
+              fd.append(k, this.form[k]);
+            }
+          }
+          const csrf = document.querySelector('input[name="csrf_token"]')?.value;
+          if (csrf) fd.append('csrf_token', csrf);
+
+          const r = await fetch("{{ url_for('evaluations.new_match_inline') }}", {
+            method: 'POST', body: fd,
+          });
+          const data = await r.json();
+          if (!r.ok || !data.ok) {
+            this.errors = data.errors || {};
+            if (!Object.keys(this.errors).length) {
+              this.globalError = 'Could not add match — please retry.';
+            }
+            this.submitting = false;
+            return;
+          }
+          // Add the new option to the select and select it
+          const sel = this.$refs.matchSelect;
+          const opt = document.createElement('option');
+          opt.value = data.id;
+          opt.textContent = data.label;
+          opt.selected = true;
+          sel.insertBefore(opt, sel.options[1] || null);
+          sel.value = String(data.id);
+          // Trigger change so any listeners (Alpine x-model) sync up
+          sel.dispatchEvent(new Event('change'));
+
+          this.showModal = false;
+          this.submitting = false;
+          // Reset form so re-opens are clean
+          for (const k of Object.keys(this.form)) this.form[k] = '';
+        } catch (err) {
+          this.globalError = 'Network error — please retry.';
+          this.submitting = false;
+        }
+      },
+    };
+  }
+</script>

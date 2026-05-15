@@ -1,0 +1,96 @@
+{# Per-criterion drill-down for the scout-comparison section (Phase 5d patched).
+   Vars in scope: data.players, grouped_criteria (Python-pre-grouped),
+                  scout_mode.
+
+   Cell semantics:
+     - rated:        numeric value (with (N) eval count in averaged mode)
+     - is_NA = True: "N/A" badge
+     - absent:       "—"  (criterion doesn't apply OR no row in evaluation_scores)
+
+   Grouping is now done in Python (`group_criteria_by_category`) — the
+   prior `{% set _ = list.append(...) %}` Jinja pattern silently failed
+   past the first iteration.
+#}
+{% for cat in grouped_criteria %}
+  {# Open by default — the outer expander already gates the whole drilldown,
+     so showing all category tables on first expand removes a confusing
+     "click and see nothing" double-click step. User can still collapse
+     a category for focus. #}
+  <details open
+           class="rounded mb-2"
+           style="background:var(--surface);border:1px solid var(--border);">
+    <summary class="px-3 py-2 cursor-pointer flex justify-between items-center"
+             style="color:var(--text);">
+      <span class="font-semibold text-sm">
+        {{ CATEGORY_LABEL_EN.get(cat.code, cat.name_en) }}
+        {% if cat.name_ar %}
+          <span class="text-xs ml-2" style="color:var(--text-muted);direction:rtl;">{{ cat.name_ar }}</span>
+        {% endif %}
+      </span>
+      <span class="text-xs" style="color:var(--text-muted);">
+        {{ cat['items'] | length }} criterion{{ '' if cat['items']|length == 1 else 'a' }}
+      </span>
+    </summary>
+    {# Phase 5d-1: Per-category radar (axes = criteria for this category).
+       Sits above the table so the eye gets a shape comparison first, then
+       the table for exact numbers. N/A and absent cells plot as 0 with
+       tooltip annotation explaining why (see scout_radars.js). #}
+    {% set radar = (scout_radar_data.per_category or {}).get(cat.code) %}
+    {% if radar and radar.axes %}
+      <div class="px-3 py-3" style="border-bottom:1px solid var(--border);">
+        <div style="position:relative;height:300px;">
+          <canvas data-scout-radar='{{ radar | tojson }}'></canvas>
+        </div>
+      </div>
+    {% endif %}
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-xs">
+        <thead>
+          <tr style="border-bottom:1px solid var(--border);">
+            <th class="text-left px-3 py-2" style="color:var(--text-muted);">Criterion</th>
+            {% for p in data.players %}
+              <th class="text-right px-3 py-2" style="color:var(--text-muted);">
+                {{ p.full_name.split(' ')[0] }}
+              </th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for crit in cat['items'] %}
+            <tr style="border-bottom:1px solid var(--border);">
+              <td class="px-3 py-2" style="color:var(--text);">
+                {{ crit.name_en }}
+                <span class="ml-1 text-xs" style="color:var(--text-muted);direction:rtl;">{{ crit.name_ar }}</span>
+              </td>
+              {% for p in data.players %}
+                {# Phase 5d-patch follow-up: pre-indexed in route to dodge
+                   Jinja's `{% set %}`-inside-`{% for %}` scoping bug that
+                   left every cell as None on the prior implementation. #}
+                {% set score_row = (p.scores_by_criterion or {}).get(crit.criterion_id) %}
+                <td class="px-3 py-2 text-right font-mono">
+                  {% if score_row and score_row.is_not_applicable %}
+                    <span class="px-1.5 py-0.5 rounded text-xs"
+                          style="background:var(--bg);color:var(--text-muted);border:1px solid var(--border);">
+                      N/A
+                    </span>
+                  {% elif score_row and score_row.score is not none %}
+                    <span style="color:var(--brand);font-weight:600;">{{ '%.1f'|format(score_row.score) }}</span>
+                    {% if scout_mode == 'averaged' and score_row.eval_count %}
+                      <span class="text-xs ml-1" style="color:var(--text-muted);"
+                            title="averaged across {{ score_row.eval_count }} evaluation{{ '' if score_row.eval_count == 1 else 's' }}">
+                        ({{ score_row.eval_count }})
+                      </span>
+                    {% endif %}
+                  {% else %}
+                    <span style="color:var(--text-muted);">—</span>
+                  {% endif %}
+                </td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+{% endfor %}

@@ -1,0 +1,84 @@
+{% extends 'base.html' %}
+{% block title %}Users — BFA Scout{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto px-4 py-10">
+
+  <div class="flex items-center justify-between mb-6">
+    <h1 class="text-xl font-bold" style="color:var(--text);">Users</h1>
+    <a href="{{ url_for('admin.users_new') }}"
+       class="px-4 py-2 rounded font-semibold text-sm text-white"
+       style="background:var(--brand);">+ New user</a>
+  </div>
+
+  <div class="rounded-lg overflow-hidden" style="border:1px solid var(--border);">
+    <table class="w-full text-sm">
+      <thead>
+        <tr style="background:var(--surface);border-bottom:1px solid var(--border);">
+          <th class="text-left px-4 py-3 font-medium" style="color:var(--text-muted);">Name</th>
+          <th class="text-left px-4 py-3 font-medium" style="color:var(--text-muted);">Email</th>
+          <th class="text-left px-4 py-3 font-medium" style="color:var(--text-muted);">Role</th>
+          <th class="text-left px-4 py-3 font-medium" style="color:var(--text-muted);">Status</th>
+          <th class="text-left px-4 py-3 font-medium" style="color:var(--text-muted);">Last login</th>
+          <th class="px-4 py-3"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr style="border-bottom:1px solid var(--border);{% if not u.is_active %}opacity:0.5;{% endif %}">
+          <td class="px-4 py-3" style="color:var(--text);">
+            {{ u.full_name }}
+            {% if u.full_name_ar %}
+              <span class="block text-xs" style="color:var(--text-muted);" dir="rtl">{{ u.full_name_ar }}</span>
+            {% endif %}
+          </td>
+          <td class="px-4 py-3" style="color:var(--text-muted);">{{ u.email }}</td>
+          <td class="px-4 py-3">
+            {% set role_color = {
+              'admin':              '#C8102E',
+              'technical_director': '#B5924C',
+              'scout':              '#3B82F6',
+              'viewer':             '#6B7280'
+            } %}
+            <span class="text-xs px-2 py-0.5 rounded font-semibold uppercase"
+                  style="background:{{ role_color.get(u.role, '#6B7280') }};color:#fff;">
+              {{ u.role | replace('_', ' ') }}
+            </span>
+          </td>
+          <td class="px-4 py-3">
+            {% if u.is_active %}
+              <span class="text-xs font-medium" style="color:#22C55E;">Active</span>
+            {% else %}
+              <span class="text-xs font-medium" style="color:var(--text-muted);">Inactive</span>
+            {% endif %}
+          </td>
+          <td class="px-4 py-3 text-xs" style="color:var(--text-muted);">
+            {{ u.last_login_at.strftime('%Y-%m-%d %H:%M') if u.last_login_at else '—' }}
+          </td>
+          <td class="px-4 py-3 text-right">
+            <a href="{{ url_for('admin.users_edit', user_id=u.id) }}"
+               class="text-xs font-medium"
+               style="color:var(--accent);">Edit</a>
+            {% if u.is_active %}
+              <form method="POST"
+                    action="{{ url_for('admin.users_deactivate', user_id=u.id) }}"
+                    class="inline ml-3"
+                    onsubmit="return confirm('Deactivate {{ u.email }}?')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="text-xs font-medium"
+                        style="color:#EF4444;">Deactivate</button>
+              </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" class="px-4 py-8 text-center text-sm"
+              style="color:var(--text-muted);">No users found.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+
+{% block title %}Evaluate {{ player.full_name }} — BFA Scout{% endblock %}
+
+{% block head %}
+<style>
+  /* Mobile-friendly slider thumbs (Phase 5c-2) */
+  .bfa-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--brand);
+    cursor: pointer;
+    border: 2px solid var(--surface);
+  }
+  .bfa-range::-moz-range-thumb {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--brand);
+    cursor: pointer;
+    border: 2px solid var(--surface);
+  }
+  @media (max-width: 768px) {
+    .bfa-range::-webkit-slider-thumb { width: 44px; height: 44px; }
+    .bfa-range::-moz-range-thumb     { width: 44px; height: 44px; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 py-6">
+
+  {# ── Header strip ──────────────────────────────────────────── #}
+  <div class="flex items-center gap-4 mb-6">
+    <a href="{{ url_for('players.player_profile', player_id=player.id) }}"
+       class="text-sm shrink-0" style="color:var(--text-muted);">&larr; Profile</a>
+  </div>
+
+  <div class="rounded-xl p-4 mb-6 flex items-center gap-4"
+       style="background:var(--surface);border:1px solid var(--border);">
+    <img src="{{ get_player_photo(player.id) }}"
+         alt="{{ player.full_name }}"
+         class="rounded-lg shrink-0"
+         style="width:64px;height:64px;object-fit:cover;"
+         onerror="this.src='{{ url_for('static', filename='photos/placeholder.svg') }}'">
+    <div class="min-w-0 flex-1">
+      <h1 class="text-xl font-bold truncate" style="color:var(--text);">
+        {# Phase 6.2.3: inline flag before player name in eval form header #}
+        {% if player.nationality_code %}
+          {% set flag = get_flag_svg(player.nationality_code) %}
+          {% if flag %}
+            <span style="display:inline-block;width:20px;height:15px;line-height:0;vertical-align:middle;margin-right:4px;">{{ flag | safe }}</span>
+          {% endif %}
+        {% endif %}
+        {{ player.full_name }}
+      </h1>
+      <div class="flex items-center gap-3 flex-wrap mt-1">
+        {% if player.position_name %}
+          <span class="pos-badge" data-group="{{ player.group_code }}">
+            {{ player.position_name }}{% if player.group_name %} · {{ player.group_name }}{% endif %}
+          </span>
+        {% endif %}
+        {% if player.dob %}
+          <span class="text-xs" style="color:var(--text-muted);">Age {{ age(player.dob) }}</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# ── The form ──────────────────────────────────────────────── #}
+  <form method="POST"
+        action="{{ url_for('evaluations.evaluate', player_id=player.id) }}"
+        x-data="evalForm()"
+        class="space-y-5 pb-24 md:pb-0">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    {# Desktop save/submit bar (sticky at top of page on md+) #}
+    <div class="hidden md:flex sticky top-0 z-30 -mx-4 px-4 py-3 items-center justify-end gap-3"
+         style="background:var(--bg);border-bottom:1px solid var(--border);">
+      <button type="submit" name="action" value="save_draft"
+              class="px-4 py-2 rounded text-sm font-semibold"
+              style="background:var(--surface);border:1px solid var(--border);color:var(--text);"
+              title="حفظ كمسودة">
+        Save draft · <span style="direction:rtl;">حفظ كمسودة</span>
+      </button>
+      <button type="button" @click="triggerSubmit()"
+              class="px-4 py-2 rounded text-sm font-semibold text-white"
+              style="background:var(--brand);"
+              title="إرسال">
+        Submit · <span style="direction:rtl;">إرسال</span>
+      </button>
+    </div>
+
+    {# 1. Match selector + inline-create modal #}
+    <div class="rounded-xl p-4"
+         style="background:var(--surface);border:1px solid var(--border);">
+      {% include 'evaluations/_match_picker.html' %}
+      {% if errors.get('match_id') %}
+        <p class="text-xs mt-2" style="color:var(--brand);">{{ errors.match_id }}</p>
+      {% endif %}
+      <div class="mt-4">
+        <label class="block text-xs uppercase tracking-wide mb-1" style="color:var(--text-muted);">
+          Minutes observed
+        </label>
+        <input type="number" name="minutes_observed"
+               min="0" max="200"
+               value="{{ (draft and draft.get('minutes_observed')) or '' }}"
+               class="w-32 px-3 py-2 rounded text-sm"
+               style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+      </div>
+    </div>
+
+    {# 2. Slider sections — one per non-NT category, expanded for the first.
+       `scores` is now {criterion_id: {'score','is_not_applicable'}} (Phase 5c-1.1).
+       Count both rated and N/A as "decided"; untouched (= no row at all) is "pending".
+    #}
+    {% for section in sections %}
+      {% set ns_filled = namespace(n=0) %}
+      {% for c in section.criteria %}
+        {% if scores.get(c.criterion_id) is not none %}
+          {% set ns_filled.n = ns_filled.n + 1 %}
+        {% endif %}
+      {% endfor %}
+      {% with expanded = (loop.first), filled_count = ns_filled.n %}
+        {% include 'evaluations/_section.html' %}
+      {% endwith %}
+    {% endfor %}
+
+    {# 3. NT Readiness section #}
+    {% include 'evaluations/_nt_readiness.html' %}
+
+    {# 4. Free-text summary #}
+    <div class="rounded-lg p-4"
+         style="background:var(--surface);border:1px solid var(--border);">
+      <label class="block text-sm font-semibold mb-2" style="color:var(--text);">
+        Summary
+        <span class="block text-xs font-normal mt-0.5" style="color:var(--text-muted);">
+          Anything that doesn't fit a slider — overall feel, key moments, follow-ups.
+        </span>
+      </label>
+      <textarea name="summary" rows="5"
+                class="w-full px-3 py-2 rounded text-sm"
+                style="background:var(--bg);border:1px solid var(--border);color:var(--text);">{{ (draft and draft.get('summary')) or '' }}</textarea>
+    </div>
+
+    {# 5. Bottom save buttons — desktop only (mobile uses the sticky bar below) #}
+    <div class="hidden md:flex items-center justify-end gap-3 pt-2">
+      <a href="{{ url_for('players.player_profile', player_id=player.id) }}"
+         class="text-sm" style="color:var(--text-muted);">Cancel</a>
+      <button type="submit" name="action" value="save_draft"
+              class="px-4 py-2 rounded text-sm font-semibold"
+              style="background:var(--surface);border:1px solid var(--border);color:var(--text);">
+        Save draft · <span style="direction:rtl;">حفظ كمسودة</span>
+      </button>
+      <button type="button" @click="triggerSubmit()"
+              class="px-4 py-2 rounded text-sm font-semibold text-white"
+              style="background:var(--brand);">
+        Submit · <span style="direction:rtl;">إرسال</span>
+      </button>
+    </div>
+
+    {# 6. Mobile sticky save bar — pinned to viewport bottom on small screens #}
+    <div class="md:hidden fixed bottom-0 left-0 right-0 z-40 px-4 py-3 flex gap-2 shadow-lg"
+         style="background:var(--surface);border-top:1px solid var(--border);">
+      <button type="submit" name="action" value="save_draft"
+              class="flex-1 px-4 py-3 rounded text-sm font-semibold"
+              style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+        Save draft
+      </button>
+      <button type="button" @click="triggerSubmit()"
+              class="flex-1 px-4 py-3 rounded text-sm font-semibold text-white"
+              style="background:var(--brand);">
+        Submit
+      </button>
+    </div>
+
+    {# 7. Submit confirmation modal (the existing pre-confirm) #}
+    {% include 'evaluations/_submit_modal.html' %}
+
+    {# 8. Soft warning modal — fires when scout tries to submit < 5 ratings #}
+    {% include 'evaluations/_soft_warning_modal.html' %}
+
+    {# Hidden Submit button used by the JS click() bridge from the modals #}
+    <button type="submit" name="action" value="submit" id="real-submit-btn"
+            class="hidden" tabindex="-1" aria-hidden="true">submit</button>
+  </form>
+
+</div>
+
+<script>
+  function evalForm() {
+    return {
+      // Submit-confirm modal (always shown after rating-count check passes)
+      submitOpen: false,
+      // Soft-warning modal (fires when ratedCount < 5)
+      lowRatingWarning: false,
+      lowRatingCount: 0,
+      // Threshold per spec
+      LOW_RATING_THRESHOLD: 5,
+
+      countRated() {
+        // Rated = dirty AND not N/A. Matches the form-data contract:
+        // only sliders that send a score_<id> key.
+        return document.querySelectorAll(
+          'input[type="range"][data-dirty="true"]:not([data-na="true"])'
+        ).length;
+      },
+
+      triggerSubmit() {
+        this.lowRatingCount = this.countRated();
+        if (this.lowRatingCount < this.LOW_RATING_THRESHOLD) {
+          this.lowRatingWarning = true;
+        } else {
+          this.submitOpen = true;
+        }
+      },
+
+      // Confirm handler (called from either modal's "Submit anyway")
+      actuallySubmit() {
+        this.submitOpen = false;
+        this.lowRatingWarning = false;
+        document.getElementById('real-submit-btn').click();
+      },
+    };
+  }
+</script>
+
+{% endblock %}

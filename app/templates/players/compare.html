@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block title %}Compare Players — BFA Scout{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 py-8"
+     x-data="comparePicker()">
+
+  <a href="{{ url_for('players.list_players') }}"
+     class="text-sm mb-4 inline-block" style="color:var(--text-muted);">&larr; Players</a>
+
+  <h1 class="text-2xl font-bold mb-1" style="color:var(--text);">Compare Players</h1>
+  <p class="text-sm mb-6" style="color:var(--text-muted);">
+    Pick 2 or 3 players to see them side by side.
+    Goalkeepers can only be compared with other goalkeepers.
+  </p>
+
+  <form method="GET" action="{{ url_for('players.compare_view') }}"
+        @submit="onSubmit($event)"
+        class="rounded-xl p-5 space-y-5"
+        style="background:var(--surface);border:1px solid var(--border);">
+
+    <template x-for="slot in [0, 1, 2]" :key="slot">
+      <div>
+        <label class="block text-xs uppercase tracking-wide mb-2"
+               style="color:var(--text-muted);"
+               x-text="`Player ${slot + 1}` + (slot >= 2 ? ' (optional)' : '')"></label>
+
+        <!-- Selected chip -->
+        <div x-show="picks[slot]"
+             class="flex items-center justify-between rounded px-3 py-2 mb-2"
+             style="background:var(--bg);border:1px solid var(--border);">
+          <span class="text-sm font-semibold" style="color:var(--text);"
+                x-text="picks[slot]?.name"></span>
+          <button type="button"
+                  @click="picks[slot] = null"
+                  class="text-xs"
+                  style="color:var(--brand);">Remove</button>
+        </div>
+
+        <!-- Search input -->
+        <div x-show="!picks[slot]" class="relative">
+          <input type="search"
+                 name="q"
+                 placeholder="Search by name or club…"
+                 hx-get="{{ url_for('players.compare_search') }}"
+                 hx-trigger="keyup changed delay:200ms, search"
+                 :hx-target="'#results-' + slot"
+                 :hx-vals="JSON.stringify({slot: slot})"
+                 autocomplete="off"
+                 class="w-full px-3 py-2 rounded text-sm"
+                 style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+          <div :id="'results-' + slot" class="mt-1"></div>
+        </div>
+
+        <!-- Hidden field that contributes to the submitted ?ids= list -->
+        <input type="hidden" name="ids" :value="picks[slot]?.id || ''">
+      </div>
+    </template>
+
+    <div class="flex items-center justify-between pt-2"
+         style="border-top:1px solid var(--border);">
+      <p class="text-xs" style="color:var(--text-muted);"
+         x-text="`${selectedCount()} selected — pick ${selectedCount() < 2 ? '2 or 3' : 'up to 3'}`"></p>
+      <button type="submit"
+              :disabled="selectedCount() < 2"
+              :class="selectedCount() < 2 ? 'opacity-40 cursor-not-allowed' : ''"
+              class="px-4 py-2 rounded text-sm font-semibold text-white"
+              style="background:var(--brand);">
+        Compare &rarr;
+      </button>
+    </div>
+  </form>
+</div>
+
+<script>
+  function comparePicker() {
+    return {
+      picks: [null, null, null],
+      selectedCount() {
+        return this.picks.filter(p => p && p.id).length;
+      },
+      onSubmit(e) {
+        if (this.selectedCount() < 2) {
+          e.preventDefault();
+        }
+      },
+      // Called by inline onclick from search-result rows (server-rendered):
+      pick(slot, id, name) {
+        this.picks[slot] = { id, name };
+        const inp = document.querySelector(`input[name="q-${slot}"]`);
+        if (inp) inp.value = '';
+        const out = document.getElementById(`results-${slot}`);
+        if (out) out.innerHTML = '';
+      },
+    };
+  }
+</script>
+{% endblock %}

@@ -1,0 +1,72 @@
+{# Reusable tri-state slider for one criterion (Phase 5c-1.1).
+   States:
+     - untouched: dirty=false, na=false   → no DB row
+     - rated:     dirty=true,  na=false   → row with score, is_not_applicable=FALSE
+     - N/A:       na=true                 → row with score=NULL, is_not_applicable=TRUE
+   Vars in scope: crit, prefilled_value (number), prefilled_na (bool).
+#}
+{% set initial_value = (prefilled_value if prefilled_value is not none else 5) %}
+{% set initial_dirty = (prefilled_value is not none) %}
+{% set initial_na    = (prefilled_na or false) %}
+<div x-data='{
+       value: {{ initial_value }},
+       dirty: {{ "true" if initial_dirty else "false" }},
+       na:    {{ "true" if initial_na    else "false" }},
+       reset()    { this.dirty = false; this.value = 5; this.na = false; },
+       toggleNA() { if (this.na) { this.na = false; } else { this.na = true; this.dirty = false; this.value = 5; } }
+     }'
+     class="border-b py-3"
+     style="border-color:var(--border);"
+     :class="na ? 'opacity-60' : ''">
+
+  <div class="flex justify-between items-start gap-3 mb-1">
+    <label class="text-sm font-medium flex-1" style="color:var(--text);">
+      {{ crit.name_en }}
+      <span class="block text-xs mt-0.5" style="color:var(--text-muted);direction:rtl;">{{ crit.name_ar }}</span>
+    </label>
+
+    <div class="flex items-center gap-2 shrink-0">
+      {# Value display: shows '—' (untouched), 'N/A' (na), or the numeric score (rated) #}
+      <span class="font-mono text-sm min-w-[3ch] text-right"
+            :style="(dirty || na) ? 'color:var(--brand);font-weight:700' : 'color:var(--text-muted)'"
+            x-text="na ? 'N/A' : (dirty ? value.toFixed(1) : '—')"></span>
+
+      {# Reset ✕ — visible only when dirty (rated state). N/A has its own toggle below. #}
+      <button type="button"
+              x-show="dirty && !na"
+              x-cloak
+              style="display:none;color:var(--text-muted);"
+              @click="reset()"
+              class="text-xs leading-none px-1"
+              title="Reset to untouched"
+              aria-label="Reset rating">✕</button>
+
+      {# N/A toggle: click to enable (also clears any prior rating); click again to disable #}
+      <button type="button"
+              @click="toggleNA()"
+              class="text-xs px-2 py-0.5 rounded border"
+              :class="na ? 'font-semibold' : ''"
+              :style="na
+                ? 'background:var(--brand);color:#fff;border-color:var(--brand);'
+                : 'background:transparent;color:var(--text-muted);border-color:var(--border);'"
+              title="غير متخصص — Not applicable">N/A</button>
+    </div>
+  </div>
+
+  <input type="range"
+         min="{{ crit.scale_min }}"
+         max="{{ crit.scale_max }}"
+         step="{{ '0.5' if crit.allow_half else '1' }}"
+         x-model.number="value"
+         @input="dirty = true; na = false"
+         :disabled="na"
+         :name="(dirty && !na) ? 'score_{{ crit.criterion_id }}' : ''"
+         :data-dirty="dirty"
+         :data-na="na"
+         class="w-full bfa-range">
+
+  {# Hidden N/A flag — only contributes to POST when na is true. #}
+  <input type="hidden"
+         :name="na ? 'na_{{ crit.criterion_id }}' : ''"
+         value="1">
+</div>

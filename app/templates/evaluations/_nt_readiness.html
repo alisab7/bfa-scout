@@ -1,0 +1,102 @@
+{# NT Readiness section — radios + text fields, not sliders.
+   Vars in scope: draft (dict or None — has the saved values).
+#}
+{% set d = draft or {} %}
+<details open
+         class="rounded-lg mb-3"
+         style="background:var(--surface);border:1px solid var(--border);">
+  <summary class="px-4 py-3 cursor-pointer font-semibold flex justify-between items-center"
+           style="color:var(--text);">
+    <span>NT Readiness ·
+      <span class="text-xs ml-1" style="color:var(--text-muted);direction:rtl;">الجاهزية لتمثيل المنتخب</span>
+    </span>
+    <span class="text-xs" style="color:var(--brand);">required to submit</span>
+  </summary>
+  <div class="px-4 pb-4 space-y-5">
+
+    {# 1. NT readiness level — required (Arabic per Phase 5c-2 spec verbatim) #}
+    <div>
+      <label class="block text-sm font-semibold mb-2" style="color:var(--text);">
+        NT Readiness Level <span style="color:var(--brand);">*</span>
+      </label>
+      <div class="flex flex-wrap gap-x-5 gap-y-2 text-sm">
+        {% for value in ['senior','u23','u20','u17','not_ready'] %}
+          <label class="flex items-center gap-1.5" style="color:var(--text);">
+            <input type="radio" name="nt_readiness_level" value="{{ value }}"
+                   {% if d.get('nt_readiness_level') == value %}checked{% endif %}>
+            <span>{{ NT_LEVEL_LABEL_EN[value] }}
+              <span class="text-xs ml-1" style="color:var(--text-muted);direction:rtl;">{{ NT_LEVEL_LABEL_AR[value] }}</span>
+            </span>
+          </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    {# 2. Recommendation — required #}
+    <div>
+      <label class="block text-sm font-semibold mb-2" style="color:var(--text);">
+        Recommendation <span style="color:var(--brand);">*</span>
+      </label>
+      <div class="flex flex-wrap gap-x-5 gap-y-2 text-sm">
+        {% for value in ['call_up','shortlist','monitor','not_at_level','release'] %}
+          <label class="flex items-center gap-1.5" style="color:var(--text);">
+            <input type="radio" name="recommendation" value="{{ value }}"
+                   {% if d.get('recommendation') == value %}checked{% endif %}>
+            <span>{{ RECOMMENDATION_LABEL_EN[value] }}
+              <span class="block text-xs" style="color:var(--text-muted);direction:rtl;">{{ RECOMMENDATION_LABEL_AR[value] }}</span>
+            </span>
+          </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    {# 3. Eligibility status — optional #}
+    <div>
+      <label class="block text-sm font-semibold mb-2" style="color:var(--text);">Eligibility status</label>
+      <div class="flex flex-wrap gap-x-5 gap-y-2 text-sm">
+        {% for value, label in [
+          ('bahraini',           'Bahraini citizen'),
+          ('foreign_residency',  'Foreign-eligible (residency)'),
+          ('foreign_ancestry',   'Foreign-eligible (ancestry)'),
+          ('foreign_other',      'Foreign-eligible (other)'),
+          ('not_eligible',       'Not eligible'),
+          ('unknown',            'Unknown'),
+        ] %}
+          <label class="flex items-center gap-1.5" style="color:var(--text);">
+            <input type="radio" name="eligibility_status" value="{{ value }}"
+                   {% if d.get('eligibility_status') == value %}checked{% endif %}>
+            <span>{{ label }}
+              <span class="text-xs ml-1" style="color:var(--text-muted);direction:rtl;">{{ ELIGIBILITY_STATUS_LABEL_AR.get(value, '') }}</span>
+            </span>
+          </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    {# 4. Eligibility notes — optional #}
+    <div>
+      <label class="block text-sm font-semibold mb-1" style="color:var(--text);">
+        Eligibility notes ·
+        <span class="text-xs" style="color:var(--text-muted);direction:rtl;">ملاحظات في استحقاق تمثيل المنتخب</span>
+      </label>
+      <textarea name="eligibility_notes" rows="2"
+                placeholder="Foreign-eligibility route, residency dates, key facts…"
+                class="w-full px-3 py-2 rounded text-sm"
+                style="background:var(--bg);border:1px solid var(--border);color:var(--text);">{{ d.get('eligibility_notes') or '' }}</textarea>
+    </div>
+
+    {# 5. Comparable player — optional #}
+    <div>
+      <label class="block text-sm font-semibold mb-1" style="color:var(--text);">
+        Comparable player ·
+        <span class="text-xs" style="color:var(--text-muted);direction:rtl;">لاعب يمكن مقارنته به</span>
+      </label>
+      <input type="text" name="comparable_player" maxlength="255"
+             value="{{ d.get('comparable_player') or '' }}"
+             placeholder="Plays like…"
+             class="w-full px-3 py-2 rounded text-sm"
+             style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+    </div>
+
+  </div>
+</details>

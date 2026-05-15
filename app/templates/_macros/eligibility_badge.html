@@ -1,0 +1,36 @@
+{#
+  eligibility_badge macro — Phase 6.2.3.
+
+  Single source of truth for inline eligibility display across all surfaces
+  (player card grid, comparison view, search dropdown, evaluation form header).
+
+  Requires Jinja globals: compute_eligibility_status, get_flag_svg
+  Both are registered in app/__init__.py.
+
+  Args:
+    player     — dict / RealDictRow / Row with nationality_status, eligible_from_date,
+                 bahrain_residency_start_date, nationality_code fields
+    show_flag  — bool (default True): render player's nationality flag inline
+    size       — 'sm' (default) | 'md': selects .elig-badge-sm or .elig-badge-md CSS modifier
+
+  CSS lives in app/static/css/style.css (.elig-badge family, Phase 6.2.3).
+
+  Usage:
+    {% from '_macros/eligibility_badge.html' import eligibility_badge %}
+    {{ eligibility_badge(player) }}
+    {{ eligibility_badge(player, show_flag=False, size='md') }}
+#}
+{% macro eligibility_badge(player, show_flag=True, size='sm') %}
+  {%- set elig = compute_eligibility_status(player) -%}
+  <span class="elig-badge elig-badge-{{ size }}" data-status="{{ elig.status_code }}"
+        title="{{ elig.label }}{% if elig.note %} · {{ elig.note }}{% endif %}">
+    {%- if show_flag and player.nationality_code -%}
+      {%- set flag = get_flag_svg(player.nationality_code) -%}
+      {%- if flag -%}
+        <span class="elig-flag">{{ flag | safe }}</span>
+      {%- endif -%}
+    {%- endif -%}
+    <span class="elig-icon">{{ elig.icon }}</span>
+    <span class="elig-text">{{ elig.label }}</span>
+  </span>
+{%- endmacro %}

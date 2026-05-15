@@ -1,0 +1,198 @@
+{# One evaluation history card (Phase 5c-2; Phase 7 role badge).
+   Vars in scope: ev (dict from get_player_evaluations), player.
+   `ev.scores` is the list of {criterion_id, score, is_not_applicable,
+   name_en, name_ar, category_code, category_name_en} pre-loaded by helper.
+   `ev.created_by_role` drives the NT/Admin badge (Phase 7).
+#}
+{% from '_macros/evaluation_role_badge.html' import evaluation_role_badge %}
+<div class="rounded-lg p-4 mb-3"
+     style="background:var(--surface);border:1px solid var(--border);"
+     x-data="{ expanded: false, lockOpen: false, unlockOpen: false, deleteModal: false }">
+
+  {# ── Header row ── #}
+  <div class="flex justify-between items-start gap-3 mb-2 flex-wrap">
+    <div class="min-w-0 flex-1">
+      <p class="text-sm font-medium" style="color:var(--text);">
+        <a href="{{ url_for('evaluations.view', eval_id=ev.id) }}"
+           style="color:var(--text);">{{ ev.evaluator_name }}</a>
+        {{ evaluation_role_badge(ev.created_by_role) }}
+        {% if ev.last_edited_by and ev.last_edited_by != ev.evaluator_id %}
+          <span class="ml-2 text-xs px-2 py-0.5 rounded uppercase tracking-wide"
+                style="background:var(--brand);color:#fff;"
+                title="Edited by {{ ev.last_edited_by_name }} on {{ ev.last_edited_at.strftime('%Y-%m-%d') }}">
+            edited by admin
+          </span>
+        {% endif %}
+        {% if ev.status == 'locked' %}
+          <span class="ml-1 text-xs" title="Locked by {{ ev.locked_by_name or 'admin' }}">🔒</span>
+        {% endif %}
+      </p>
+      <p class="text-xs mt-0.5" style="color:var(--text-muted);">
+        {% if ev.m_date %}
+          {{ ev.m_date.strftime('%Y-%m-%d') }} · {{ ev.m_home }} vs {{ ev.m_away }}
+        {% else %}
+          {{ ev.match_label or 'Freestanding evaluation' }}
+        {% endif %}
+        {% if ev.submitted_at %}
+          · submitted {{ ev.submitted_at.strftime('%Y-%m-%d') }}
+        {% endif %}
+      </p>
+    </div>
+    <div class="flex gap-2 flex-wrap shrink-0">
+      {# NT readiness badge #}
+      {% if ev.nt_readiness_level %}
+        <span class="px-2 py-1 rounded text-xs font-semibold"
+              style="background:var(--accent);color:#fff;"
+              title="{{ NT_LEVEL_LABEL_AR.get(ev.nt_readiness_level, '') }}">
+          {{ NT_LEVEL_LABEL_EN.get(ev.nt_readiness_level, ev.nt_readiness_level) }}
+        </span>
+      {% endif %}
+      {# Recommendation badge #}
+      {% if ev.recommendation %}
+        <span class="px-2 py-1 rounded text-xs font-semibold"
+              style="background:var(--brand);color:#fff;"
+              title="{{ RECOMMENDATION_LABEL_AR.get(ev.recommendation, '') }}">
+          {{ RECOMMENDATION_LABEL_EN.get(ev.recommendation, ev.recommendation) }}
+        </span>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ── Summary snippet ── #}
+  {% if ev.summary %}
+    <p class="text-sm mb-2" style="color:var(--text);">
+      {{ ev.summary[:200] }}{% if ev.summary|length > 200 %}…{% endif %}
+    </p>
+  {% endif %}
+
+  {# ── Expand toggle ── #}
+  <button type="button"
+          @click="expanded = !expanded"
+          class="text-xs underline"
+          style="color:var(--text-muted);"
+          x-text="expanded ? 'Hide details' : 'Show all scores (' + {{ ev.scores | length }} + ')'"></button>
+
+  {# ── Expanded details ── #}
+  <div x-show="expanded" x-cloak style="display:none;" class="mt-4 pt-3"
+       :class="''"
+       style="border-top:1px solid var(--border);">
+
+    {% if ev.scores %}
+      {# Phase 5c-2.1: group scores by category, each section collapsible.
+         Rated rows count toward per-category avg; N/A rows shown separately
+         and don't influence avg; untouched criteria simply have no row. #}
+      {% set grouped = group_scores_by_category(ev.scores) %}
+      {% for cat in grouped %}
+        <details class="rounded-lg mb-2"
+                 style="background:var(--bg);border:1px solid var(--border);">
+          <summary class="px-3 py-2 cursor-pointer flex justify-between items-center gap-3 flex-wrap">
+            <div>
+              <span class="font-semibold text-sm" style="color:var(--text);">{{ cat.name_en }}</span>
+              {% if cat.name_ar %}
+                <span class="text-xs ml-2" style="color:var(--text-muted);direction:rtl;">{{ cat.name_ar }}</span>
+              {% endif %}
+            </div>
+            <div class="text-xs" style="color:var(--text-muted);">
+              {% if cat.avg_score is not none %}
+                <span style="color:var(--brand);font-weight:600;">{{ cat.avg_score }} avg</span>
+                <span class="mx-1">·</span>
+              {% endif %}
+              {{ cat.rated_count }} rated{% if cat.na_count > 0 %},
+                {{ cat.na_count }} N/A{% endif %}
+            </div>
+          </summary>
+          <ul class="px-3 pb-3 pt-1 space-y-1 text-xs">
+            {% for s in cat['items'] %}
+              <li class="flex justify-between items-baseline gap-2">
+                <span style="color:var(--text);">
+                  {{ s.name_en }}
+                  <span class="ml-1" style="color:var(--text-muted);direction:rtl;">· {{ s.name_ar }}</span>
+                </span>
+                {% if s.is_not_applicable %}
+                  <span class="px-2 py-0.5 rounded text-xs uppercase shrink-0"
+                        style="background:var(--surface);color:var(--text-muted);border:1px solid var(--border);">
+                    N/A · <span style="direction:rtl;">غير متخصص</span>
+                  </span>
+                {% else %}
+                  <span class="font-mono font-semibold shrink-0" style="color:var(--brand);">
+                    {{ '%.1f'|format(s.score) }}
+                  </span>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        </details>
+      {% endfor %}
+    {% else %}
+      <p class="text-xs" style="color:var(--text-muted);">No criterion scores recorded.</p>
+    {% endif %}
+
+    {# ── Action buttons (role-gated; locked → no delete) ── #}
+    {% set can_delete_self = (ev.status == 'draft' and ev.evaluator_id == current_user.id) %}
+    {% set can_delete_admin = current_user.has_role('admin', 'technical_director') and ev.status != 'locked' %}
+    {% if current_user.has_role('admin', 'technical_director') or can_delete_self %}
+      <div class="mt-4 flex items-center gap-3 pt-3 flex-wrap" style="border-top:1px solid var(--border);">
+        <a href="{{ url_for('evaluations.view', eval_id=ev.id) }}"
+           class="text-xs underline" style="color:var(--accent);">Open full view</a>
+        {% if current_user.has_role('admin', 'technical_director') %}
+          {% if ev.status == 'submitted' %}
+            <form method="POST" action="{{ url_for('evaluations.lock', eval_id=ev.id) }}"
+                  onsubmit="return confirm('Lock this evaluation? Scout will not be able to edit it until it is unlocked.');"
+                  class="inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit"
+                      class="text-xs underline"
+                      style="color:var(--brand);">Lock 🔒</button>
+            </form>
+          {% elif ev.status == 'locked' %}
+            <button type="button" @click="unlockOpen = true"
+                    class="text-xs underline" style="color:var(--brand);">Unlock</button>
+          {% endif %}
+        {% endif %}
+        {# Phase 5c-3: delete button. Locked = nobody can delete; scouts only own drafts. #}
+        {% if can_delete_self or can_delete_admin %}
+          <button type="button" @click="deleteModal = true"
+                  class="text-xs underline" style="color:var(--text-muted);">Delete</button>
+        {% endif %}
+      </div>
+      {% include 'evaluations/_delete_modal.html' %}
+
+      {# ── Unlock modal (inside the card so it shares Alpine scope) ── #}
+      {% if ev.status == 'locked' %}
+        <div x-show="unlockOpen" x-cloak style="display:none;"
+             class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div class="rounded-xl p-6 max-w-md w-full"
+               style="background:var(--surface);border:1px solid var(--border);">
+            <h3 class="font-bold text-lg mb-3" style="color:var(--text);">Unlock evaluation #{{ ev.id }}</h3>
+            <p class="text-sm mb-4" style="color:var(--text-muted);">
+              Unlock returns this evaluation to <strong>submitted</strong> so the
+              original scout (or admin) can edit it again. The reason below is
+              audit-logged.
+            </p>
+            <form method="POST" action="{{ url_for('evaluations.unlock', eval_id=ev.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <label class="block text-xs uppercase tracking-wide mb-1" style="color:var(--text-muted);">
+                Reason (min 10 chars)
+              </label>
+              <textarea name="reason" rows="3" minlength="10" required
+                        class="w-full px-3 py-2 rounded text-sm"
+                        style="background:var(--bg);border:1px solid var(--border);color:var(--text);"></textarea>
+              <div class="flex items-center justify-end gap-3 mt-4">
+                <button type="button" @click="unlockOpen = false"
+                        class="text-sm" style="color:var(--text-muted);">Cancel</button>
+                <button type="submit"
+                        class="px-4 py-2 rounded text-sm font-semibold text-white"
+                        style="background:var(--brand);">Unlock</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      {% endif %}
+    {% else %}
+      <div class="mt-4 pt-3" style="border-top:1px solid var(--border);">
+        <a href="{{ url_for('evaluations.view', eval_id=ev.id) }}"
+           class="text-xs underline" style="color:var(--accent);">Open full view</a>
+      </div>
+    {% endif %}
+  </div>
+</div>

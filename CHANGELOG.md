@@ -1,5 +1,2286 @@
 # Changelog
 
+## v1.0.0 — Phase 8: Production deployment infrastructure (2026-05-13)
+
+**First production release.** Containerised deploy to DigitalOcean
+behind Cloudflare, photos on Spaces, managed Postgres, nightly
+off-site backups. After this commit the project enters maintenance
+mode — new features become new phases.
+
+This phase is multi-actor. **This commit is the Cowork-side share
+only**: all in-repo production config + the photo-storage abstraction.
+DO provisioning (Ali) and the on-droplet SSH deploy + 10 smoke tests
+(Claude Code on the droplet) happen *after* this lands and are tracked
+in DEPLOY.md, not here.
+
+### Photo storage abstraction (the substantive code change)
+
+`app/storage.py` (NEW) — pluggable backend, chosen at runtime by the
+presence of `SPACES_BUCKET`:
+- prod → DigitalOcean Spaces (boto3, `photos/<player_id>.jpg`,
+  public-read, served via the Spaces CDN)
+- dev → `app/static/photos/<player_id>.jpg` (unchanged legacy layout;
+  zero migration for existing dev DBs)
+
+Four ops: `put_player_photo`, `get_player_photo_url`,
+`read_player_photo_bytes`, `delete_player_photo`.
+
+**Why this is bigger than the spec's 2-function sketch** (documented
+inline + here so the design intent survives):
+
+1. **Pillow re-encode invariant preserved.** `app/players/photos.py`
+   has a hard rule: *never store the raw upload — always Pillow
+   centre-crop 400×400 + re-encode JPEG*. The spec's sketch uploaded
+   the raw `file_obj`. Fixed: `save_player_photo()` keeps the entire
+   Pillow pipeline and hands the processed JPEG **bytes** to
+   `storage.put_player_photo()`. Prod never touches local disk for
+   photos (hard rule) AND bytes are still guaranteed re-encoded.
+2. **Passport PDF stays self-contained.** Phase 6 deliberately
+   base64-embeds the photo (WeasyPrint's network fetcher is flaky).
+   Spec's sketch had no read-bytes path. Added
+   `storage.read_player_photo_bytes()` (Spaces `get_object` or local
+   read) so `passport/__init__.py:_resolve_photo_data_uri` keeps
+   embedding regardless of backend.
+3. **Single read chokepoint.** `players/helpers.py:get_player_photo`
+   (a Jinja global used by profile/list/grid/compare/eval-form +
+   wyscout aggregations) now delegates to `storage`. One edit →
+   every existing photo render works on Spaces transparently.
+   Photo filenames stay keyed by `player_id` (NOT the spec's
+   `national_id or player_id`, which would have silently broken ~6
+   read sites).
+
+`get_player_photo_url` deliberately does **no** per-render Spaces
+`head_object` existence probe (that's an S3 round-trip per player card
+per list page). It returns the CDN URL and relies on the templates'
+existing `onerror→placeholder.svg` for photoless players. Documented
+trade-off: one wasted image GET vs. an S3 HEAD on every render.
+
+### Healthcheck
+
+`app/healthz.py` (NEW) — `GET /healthz` → `200 {"status":"ok"}` (app
+up + DB reachable) or `503 {"status":"error","detail":...}`. Uses
+`_get_pool()` directly with explicit `putconn()` in `finally` (the
+spec sketched `from app.db import get_connection`, which doesn't
+exist; the real module exposes `get_db()` / `_get_pool()`). Registered
+in `app/__init__.py`. Consumed by the Docker HEALTHCHECK, the compose
+healthcheck, Cloudflare, and `deploy.sh`'s post-deploy gate.
+
+### Admin bootstrap reconciliation
+
+The codebase already had an idempotent `app/db.py:seed_initial_admin()`
+reading `INITIAL_ADMIN_*`; the spec invented a parallel script using
+`ADMIN_*`. Reconciled to ONE path: `seed_initial_admin()` now accepts
+`ADMIN_EMAIL/PASSWORD` (preferred) **or** the legacy
+`INITIAL_ADMIN_*`. `scripts/bootstrap_admin.py` (NEW) calls it and
+verifies the post-condition (an admin row exists). Idempotent —
+proven by running twice (both exit 0, no duplicate). Fixed an import
+bug along the way: `python scripts/foo.py` puts `scripts/` on
+sys.path, not the repo root, so the script prepends the repo root
+explicitly (true in the container too).
+
+### Infra files (NEW)
+
+```
+Dockerfile                       python:3.13-slim + WeasyPrint native
+                                 deps (libpango/cairo/gdk-pixbuf) +
+                                 Noto Latin/Arabic/emoji fonts + curl;
+                                 non-root uid 1000; HEALTHCHECK; runs
+                                 gunicorn -c gunicorn.conf.py
+docker-compose.prod.yml          app + nginx; env_file: .env.production;
+                                 nginx depends_on app service_healthy
+gunicorn.conf.py                 2 workers × 4 gthreads, timeout 120
+                                 (WeasyPrint headroom), preload, stdout
+nginx/conf.d/bfa-scout.conf      :80→:443 redirect, TLS, 50M body cap,
+                                 120s proxy timeout, /healthz no-log
+nginx/certs/.gitkeep             dir ships; origin.{crt,key} gitignored
+.env.production.example          all prod vars + placeholders + notes
+.env.development.example         local-dev vars (Spaces unset → local FS)
+scripts/deploy.sh                pull→build→up, fails loud if /healthz
+                                 doesn't pass in 90s
+scripts/bootstrap_admin.py       idempotent admin seed (see above)
+scripts/backup_to_spaces.sh      nightly pg_dump→Spaces, 30-day prune
+scripts/restore_from_spaces.sh   manual, typed-confirm, destructive
+DEPLOY.md                        full 10-section runbook
+```
+
+`requirements.txt` += `boto3>=1.34` (single dependency source of
+truth; the Dockerfile no longer pip-installs it separately).
+`.gitignore` += `.env.production`, `.env.development`, `nginx/certs/*`
+(hard rule: secrets + origin certs never committed; `.example`
+templates ARE committed).
+
+**Deliberate spec deviation**: no custom `nginx/Dockerfile`. Stock
+`nginx:alpine` + bind-mounted config/certs is functionally identical
+and simpler; documented in DEPLOY.md §1 and the compose file.
+
+### Verified (Cowork-side, locally)
+
+- App imports cleanly; `/healthz` live → `200 {"status":"ok"}`
+- `storage.py` local-mode put/get/read/delete round-trip — bytes
+  match, delete clears both URL and bytes
+- `bootstrap_admin.py` — idempotent across two consecutive runs (exit
+  0, no duplicate admin)
+- **Full regression: 272/272 across all 9 prior E2E suites** (4.2 18,
+  5d-1 39, 6.0 26, 6.1 57, 6.2 26, 6.2.1 23, 7 29, 7.1 8, 9 46) — the
+  storage abstraction is transparent; the passport PDF (which now
+  pulls photo bytes through `storage`) still passes 6.0/6.1/6.2/6.2.1
+  unchanged.
+
+### Blocked — NOT verifiable on this machine (no Docker installed)
+
+- `docker build` of the Dockerfile — author-and-lint only here.
+  Closes on Ali's Docker or first droplet build (DEPLOY.md §4.6).
+- Spaces mode of `storage.py` — needs real DO credentials. Local-mode
+  fully tested; Spaces code path is the same shape (boto3 put/get/
+  delete) and exercised by smoke test #5 on the droplet.
+- The 10 post-deploy smoke tests — require the live droplet
+  (DEPLOY.md §4 "Post-deploy smoke tests").
+
+These three are infra-actor items, not code defects; tracked in
+DEPLOY.md so the droplet-side actor closes them.
+
+## v0.9.0 — Phase 9: Bulk player import + Phase 7.1 widening (2026-05-12)
+
+One combined commit. Phase 9 adds the admin-only bulk-import workflow
+mandated by BFA board feedback for faster player onboarding. Phase 7.1
+flips two of the four design calls documented in v0.7.0: TD now gets
+`/nt` access, and the NT visibility filter now hides NT evaluations
+from viewer role as well as scout. Landing them together preserves
+bisect clarity — both are policy-shift changes that pair naturally.
+
+### Phase 7.1 — widening (5 lines of code)
+
+| Change | Before (v0.7.0) | After (v0.7.1 + v0.9.0) |
+|---|---|---|
+| `admin_or_nt_staff_required` | admin + nt_staff | admin + technical_director + nt_staff |
+| `_nt_visibility_clause` filter set | `'scout'` only | `('scout', 'viewer')` |
+| `nt_readiness_summary` inline filter | same | same |
+| `get_evaluation_count_active` inline filter | same | same |
+| `get_player_bio_counts` inline filter | same | same |
+| `base.html` desktop /nt nav-link condition | admin + nt_staff | admin + TD + nt_staff |
+| `base.html` mobile /nt nav-link condition | admin + nt_staff | admin + TD + nt_staff |
+
+The four `_nt_visibility_clause` and inline `requesting_user_role`
+sites moved as a set — half-applied widening would have left viewer
+filtered on some helpers but not others, a silent partial info leak.
+
+**Phase 7.1 verification** ([migrations/_e2e_phase_7_1.py](migrations/_e2e_phase_7_1.py)) — 8/8 PASS:
+- TD GET `/nt` returns 200 (was 403 in 7.0)
+- TD dashboard renders the `/nt` nav-link href
+- Viewer's player profile no longer renders NT-tagged evaluations
+- Viewer's `get_evaluation_count_active(2)` returns N-1 where admin sees N
+- Admin still sees everything (regression: only frontline roles get filtered)
+
+### Phase 9 — bulk player import
+
+New admin-only workflow at `/admin/players/bulk-import` for onboarding
+many players from a single CSV/Excel file. 3-step UX: upload → preview
+(per-row classification, admin overrides per duplicate) → commit
+(atomic transactional INSERT/UPDATE). No schema changes — `national_id`
+UNIQUE column already exists and drives the primary duplicate-detection
+path.
+
+**Architecture**
+
+- `app/admin/bulk_import_helpers.py` — pure functions: `parse_file()`
+  (pandas-backed CSV+xlsx parser; normalises empty/`N/A`/`nan` cells to
+  None), `validate_row()` (per-field validation with errors+warnings),
+  `find_duplicate()` (national_id-first, then name+DOB+position fuzzy),
+  `classify_rows()` (one pass that produces (parsed_rows, summary)),
+  `build_db_params()` (resolves position FK + clubs.name → club_id).
+- `app/admin/bulk_import_session.py` — in-memory parked-import store
+  keyed by `secrets.token_urlsafe(16)`. The token lives in the Flask
+  session cookie; the rows (up to 500) live in a module-level dict.
+  30-minute TTL, lazy GC. Persistence intentionally absent for v1 —
+  Flask restart wipes pending imports; admin re-uploads.
+- `app/admin/bulk_import.py` — 7 routes on the existing admin
+  blueprint: index, upload (POST), preview, commit (POST), result,
+  discard, template.csv, template.xlsx.
+
+**Locked decisions honoured**
+
+| Decision | Implementation |
+|---|---|
+| File formats | CSV + xlsx via pandas (`dtype=str`); rejected anything else |
+| Required field | `full_name` only; every other column optional |
+| Empty / "N/A" / "nan" | All normalise to NULL at parse time (NULL_SENTINELS list) |
+| Duplicate detection | national_id UNIQUE first; else (name+DOB+position_code) fuzzy match on active players |
+| Duplicate action | Per-row select on preview: 'skip' (default) or 'update' |
+| Photo handling | Not in scope — admin UI handles per-player |
+| Permission | `admin_required` on every route |
+| Audit log | 1 row per imported player (`player.bulk_imported`) + 1 summary row (`admin.bulk_import_completed`) — both inside the same transaction as the data write |
+| Max rows | 500 per import; rejected at parse with clear error |
+| Templates | CSV + Excel both downloadable, both include 2 example rows |
+
+**Schema mapping (1.5 catch)** — the spec's `dominant_foot` field name
+doesn't match the actual DB column `players.foot`. Validation accepts
+`dominant_foot` from the CSV but `build_db_params` writes to `foot`.
+Same with position codes — spec example used "CB, AM" but the actual
+positions table has `AMF`, `DMF` etc; validation uses the live
+`positions.code` set so it stays accurate.
+
+**Validation rules** (any of these adds an error → row marked INVALID):
+- `full_name` missing
+- `dob` unparseable or in the future
+- `national_id` shorter than 5 chars
+- `primary_position_code` not in `positions.code` (case-insens)
+- `nationality_code` not in NATIONALITY_LABEL (ISO alpha-3)
+- `nationality_status` not in the documented enum
+- `eligible_from_date` / `bahrain_residency_start_date` unparseable
+- `dominant_foot` not in (right, left, both)
+- `height_cm` / `weight_kg` not a number (out of range = warning only)
+
+**Warnings** (cosmetic; don't block import):
+- `dob` < 1950
+- `nationality_status='foreign_residency'` without `bahrain_residency_start_date`
+- `current_club_name` doesn't match a `clubs.name` (stored as free-text in `players.current_club`)
+- `height_cm` / `weight_kg` outside reasonable range
+
+**Bugs caught + fixed during build**
+
+1. **pandas 3.x StringDtype + .map() skips NaN cells** — `dtype=str, keep_default_na=False` doesn't fully suppress NaN inference; `DataFrame.map(_norm)` doesn't pass NaN to the function in pandas 3.x (different from pandas 2.x `applymap`). Fixed by normalising at the dict layer after `to_dict('records')` instead of at the DataFrame layer.
+2. **`'float' object has no attribute 'strip'`** in `validate_row` — defensive `_str()` coerce added; fields dict re-normalised at the top of the function so subsequent `.strip()` / `.lower()` calls never see a float.
+3. **`cursor already closed`** during INSERT — `cur.fetchone()` was AFTER the `with conn.cursor() as cur:` block. Moved it inside.
+4. **Multiple inline `requesting_user_role == 'scout'` sites** — 4 sites in `helpers.py` needed widening for the 7.1 viewer-filter. All updated together; a grep confirms 0 of the old narrow form remain.
+
+**E2E suite — `migrations/_e2e_phase_9.py` — 46/46 PASS**
+
+Real Flask + real HTTP (NOT flask.test_client). Multipart-aware
+HTTP helper. Coverage:
+
+- Case 1-2: 5-row CSV + 5-row xlsx, both preview→commit→DB
+- Case 3: row missing `full_name` → INVALID
+- Case 4-7: duplicate detection (national_id + fuzzy), commit with
+  skip/update per row
+- Case 8-9: invalid nationality_code / position_code → INVALID
+- Case 10: empty cells AND "N/A" string → NULL in DB
+- Case 11: audit log has per-player + summary rows
+- Case 12-13: scout 403, anon 401
+- Case 14: 501-row file rejected at parse
+- Case 15: discard clears parked session
+- Bonus: template downloads (CSV + xlsx) return correct content-types
+  and contain the expected column headers
+
+All test fixtures (users + players + evaluations) snapshot+restored
+in `finally:` — DB left as it was.
+
+### Files
+
+```
+migrations/
+  _e2e_phase_9.py                NEW  46-check E2E
+  _e2e_phase_7_1.py              NEW  8-check 7.1 widening verifier
+
+app/admin/
+  __init__.py                    MOD  import bulk_import (registers routes)
+  bulk_import.py                 NEW  7 routes on the admin blueprint
+  bulk_import_helpers.py         NEW  parsing, validation, dedup, DB params
+  bulk_import_session.py         NEW  in-memory parked-import store
+
+app/auth/decorators.py           MOD  admin_or_nt_staff_required widened to include TD
+app/evaluations/helpers.py       MOD  _nt_visibility_clause + 3 inline sites widened to ('scout','viewer')
+
+app/templates/admin/
+  bulk_import_upload.html        NEW
+  bulk_import_preview.html       NEW
+  bulk_import_result.html        NEW
+app/templates/base.html          MOD  /nt nav-link condition widened (desktop + mobile)
+app/templates/players/list.html  MOD  +Bulk import button next to +Add Player (admin only)
+app/static/css/style.css         MOD  +bulk-preview-table row colours, badges
+
+CHANGELOG.md                     MOD  this entry
+PROJECT.md                       MOD  Phase 9 ✓, Phase 7.1 ✓, queue Phase 8 deploy
+```
+
+No schema changes. No Python deps added.
+
+### Verified
+
+- **Phase 9 E2E: 46/46 PASS**
+- **Phase 7.1 verifier: 8/8 PASS**
+- **Regression: 218/218** across the 7 prior suites (4.2, 5d-1, 6.0,
+  6.1, 6.2, 6.2.1, 7) — threading the wider viewer-filter and adding
+  the bulk-import routes didn't disturb any existing assertion.
+- **Total: 272 checks across 9 suites, 0 failures.**
+
+### Out of scope / queued
+
+- Photo upload in bulk import — single-add UI handles this
+- ZIP-of-CSVs / multi-file upload — single file per session
+- Background job processing — synchronous (500 rows fits in ~3s)
+- Bulk EDIT (only bulk CREATE + update-on-duplicate)
+- Import history page — `audit_log` captures it
+- Field-level diff display on update
+- DB-backed parked-import store — in-memory acceptable for v1
+- Phase 8 (auth polish + production deploy) is the final queued phase
+
+## v0.7.0 — Phase 7: NT staff role + /nt workspace + visibility invariant (2026-05-12)
+
+BFA board feedback from May 12 mandated three things: a dedicated
+National Team account with admin-like access, scout-side privacy
+(scouts cannot see what NT staff have evaluated), and a dedicated
+NT workspace. v0.7.0 lands all three. Major version bump — first
+schema change since Phase 6, first new role, and a new codebase-wide
+visibility invariant.
+
+### Schema
+
+- `evaluations.created_by_role VARCHAR(32) NOT NULL DEFAULT 'scout'`
+  — every existing evaluation backfilled to `'scout'` (the only
+  frontline role at the time). 7 rows touched (6 active + 1
+  soft-deleted). Indexed via `idx_evaluations_created_by_role`.
+- `users_role_check` constraint **widened additively** to
+  `(admin, technical_director, scout, viewer, nt_staff)`. The
+  spec proposed replacing the set with
+  `(admin, scout, coach, management, nt_staff)`, which would have
+  silently dropped TD and viewer and broken four existing role-
+  decorators. The (1.5) pre-flight catch flipped this to additive.
+- `schema.sql` updated declaratively — no ALTER statements.
+
+### NT VISIBILITY INVARIANT (new, sibling to soft-delete from 5c-3)
+
+**Every evaluation read helper accepts `requesting_user_role`.**
+When `'scout'`, the SQL appends `AND created_by_role != 'nt_staff'`,
+hiding NT-staff evals from scouts. Any other value (None, admin,
+nt_staff, viewer, TD) applies no filter.
+
+Helpers threaded (6):
+`get_evaluation`, `get_player_evaluations`, `nt_readiness_summary`,
+`get_evaluation_count_active`, `get_player_bio_counts`,
+`get_player_evaluation_aggregate`.
+
+Routes/templates threaded:
+- `players.player_profile`, `players.compare_view`,
+  `players.compare_scout_section`, `evaluations.view`,
+  `evaluations.update_draft`, `passport.player_passport`
+- `players/profile.html`, `evaluations/_eligibility_card.html`
+
+### Evaluation create — role stamping
+
+`get_or_create_draft(..., creator_role='scout')` accepts the
+role; both callers (`evaluations.evaluate` and
+`evaluations._handle_form_post`) pass `current_user.role`. NT
+staff authoring an evaluation through the standard form gets a
+row tagged `created_by_role='nt_staff'`, hidden from scouts.
+
+### Auth decorators
+
+- `any_authenticated` widened to include `nt_staff`.
+- New: `nt_staff_required` (NT only).
+- New: `admin_or_nt_staff_required` — gates `/nt`. TD deliberately
+  NOT included; flagged as a design call below.
+
+### /nt workspace
+
+- `GET /nt/` (admin + nt_staff) — table of BPL-eligible players:
+  `nationality_status IN ('bahraini','foreign_ancestry')` OR
+  explicit `eligible_from_date <= CURRENT_DATE` OR
+  `foreign_residency` + residency-start + 5y already passed.
+- Per-player NT-eval count column via `get_nt_evaluation_count`
+  (registered as a Jinja global).
+- Nav link (desktop + mobile) in `base.html` — admin + nt_staff
+  only; uses BFA gold (`var(--accent)`) to stand out.
+- Right-of-nav `nt_staff` user role badge in emerald `#10B981`.
+
+### Role badge macro
+
+`app/templates/_macros/evaluation_role_badge.html` — emits `NT` /
+`Admin` badges next to evaluator names. Scout gets no badge
+(default state keeps the UI quiet for the common case). Applied
+in: history card, compare scout-section, passport
+(latest-eval panel + recent-evaluations table). CSS in both
+`style.css` (live) and `_passport.css` (print).
+
+### Design calls made during build (documented; reversible)
+
+1. **Constraint widened additively** — preserves TD and viewer.
+2. **`/nt` access = admin + nt_staff only** — TD does NOT get the
+   workspace by default. Widen `admin_or_nt_staff_required` to
+   change.
+3. **Visibility filter applies to `scout` role only** — viewer
+   sees NT evals today. Edit `_nt_visibility_clause` to change.
+4. **"Coach GETs /nt → 403"** in the spec — no coach role
+   exists; E2E substitutes viewer.
+
+### Files
+
+```
+migrations/
+  _generate_phase_7.py           NEW
+  phase_7_nt_role.sql            NEW
+  _dryrun_7.py                   NEW
+  _apply_7.py                    NEW
+  _verify_throwaway_7.py         NEW
+  _e2e_phase_7.py                NEW
+schema.sql                       MOD
+app/auth/decorators.py           MOD
+app/evaluations/helpers.py       MOD
+app/evaluations/__init__.py      MOD
+app/players/__init__.py          MOD
+app/passport/data.py             MOD
+app/passport/__init__.py         MOD
+app/templates/players/profile.html               MOD
+app/templates/evaluations/_eligibility_card.html  MOD
+app/templates/evaluations/_history_card.html      MOD
+app/templates/players/_compare_scout_section.html MOD
+app/templates/passport/passport.html              MOD
+app/templates/passport/_passport.css              MOD
+app/static/css/style.css                          MOD
+app/templates/base.html                           MOD
+app/__init__.py                  MOD
+app/nt/__init__.py               NEW
+app/nt/helpers.py                NEW
+app/templates/nt/index.html      NEW
+app/templates/nt/_squad_table.html               NEW
+app/templates/_macros/evaluation_role_badge.html NEW
+```
+
+No Python dep changes.
+
+### Verified
+
+- **Phase 7 E2E: 29/29 PASS** — 5 permission, 7 visibility, 4
+  aggregate-helper, 2 squad-list, 3 create-path, 3 nav-link,
+  2 pre-flight schema. Test fixtures (3 throwaway users + 4
+  evals) snapshot+restored in `finally:`.
+- **Regression: 218/218 across 7 suites** — 4.2 (18), 5d-1 (39),
+  6.0 (26), 6.1 (57), 6.2 (26), 6.2.1 (23), 7 (29). Threading
+  `requesting_user_role=None` defaults preserved all existing
+  behaviour.
+- **Schema convergence** — throwaway-namespace verify confirms
+  fresh `flask init-db` reproduces the column + index + widened
+  constraint; INSERT(nt_staff) succeeds; INSERT(bogus) rejected.
+- **Visual** — `/nt` squad table shows Arthur (residency
+  complete) + Bader (Bahraini citizen). Bouhra (residency
+  completes 2027) correctly excluded.
+
+### Out of scope / queued
+
+- Per-scout configurable visibility (out of scope)
+- Bulk player import (Phase 9)
+- Production deploy (Phase 8)
+- Arabic translations for "National Team" / "NT"
+
+## v0.6.2.3 — Phase 6.2.3: Eligibility + nationality flag display audit (2026-05-12)
+
+Standing rule enforced for the first time: **before any user-facing field rendering
+feature merges, audit ALL surfaces that display that field**. Phase 6.2.2's Bahrain
+flag fix was scoped only to the eligibility card; this phase propagates it everywhere.
+
+### Grep audit performed before any code change
+
+Searched `app/**/*.{py,html}` for `nationality_status`, `nationality_code`,
+`eligibility`, `is_eligible_now`, `flag_emoji`, `get_flag_svg`. Classified every hit:
+
+| Surface | Prior state | Action |
+|---|---|---|
+| Home dashboard `index.html` | Navigation cards only, no player list | KEEP |
+| Players list `list.html` | HTMX calls `_grid.html` | KEEP (inherits grid) |
+| **Player card grid `_grid.html`** | `flag_emoji()` (unicode text) + plain icon+label, no color badge | **FIX** |
+| **Player profile header `profile.html`** | `flag_emoji()` in bio grid | **FIX** |
+| Eligibility card `_eligibility_card.html` | 6.2.2 complete | KEEP |
+| **Compare view bio `compare_view.html`** | `p.nationality` text only, no flag, no badge | **FIX** |
+| **Compare search `_compare_search.html`** | Name+pos+club, no flag | **ADD** |
+| **Evaluation form `form.html`** | Name+pos+age, no flag | **ADD** |
+| Player edit/new forms | Form inputs for nationality fields | KEEP |
+| Evaluation view | Evaluation's own `eligibility_status` | KEEP |
+| Passport PDF | 6.2.2 complete | KEEP |
+| Backend `.py` files | Data layer, not user-facing | KEEP |
+
+### Changes
+
+#### New: Reusable `eligibility_badge` Jinja macro
+`app/templates/_macros/eligibility_badge.html` — single source of truth for inline
+eligibility display. Renders: player's nationality flag (SVG) + colored status badge.
+Badge color driven by new `status_code` field in `compute_eligibility_status()`.
+
+```jinja2
+{% from '_macros/eligibility_badge.html' import eligibility_badge %}
+{{ eligibility_badge(player) }}
+{{ eligibility_badge(player, show_flag=False, size='md') }}
+```
+
+#### New: `status_code` field in `compute_eligibility_status()` / `_build_passport_eligibility()`
+All return dicts gain `status_code: str` (one of `eligible_now`, `eligible_future`,
+`not_eligible`, `unknown`). Drives CSS `data-status` attribute on `.elig-badge` elements.
+
+| Branch | status_code |
+|---|---|
+| `not_eligible` | `not_eligible` |
+| `bahraini` / `foreign_ancestry` | `eligible_now` |
+| explicit date ≤ today | `eligible_now` |
+| explicit date > today | `eligible_future` |
+| residency-derived ≤ today | `eligible_now` |
+| residency-derived > today | `eligible_future` |
+| pending / foreign_other / unknown | `unknown` |
+
+#### New CSS: `.elig-badge` family (`app/static/css/style.css`)
+Dark-theme–aware badge classes. Color via `data-status` attribute (no JS needed).
+`.elig-flag` inside badge sized 14×10px for inline SVG flag.
+
+#### Data layer: eligibility fields propagated to two previously-missing backends
+- `app/wyscout/aggregations.py:compare_players()` — added `nationality_code`,
+  `nationality_status`, `eligible_from_date`, `bahrain_residency_start_date` to SELECT
+  and player dict. Templates can now call `eligibility_badge(p)` for compare players.
+- `app/evaluations/__init__.py:_load_player()` — added `nationality_code` to SELECT
+  so the evaluation form header can show the player's flag.
+- `app/players/__init__.py:compare_search()` — added `nationality_code` to SELECT
+  so the compare picker search dropdown can show flags.
+
+#### Template changes
+- `players/_grid.html` — macro replaces `flag_emoji` + plain eligibility text.
+  `flag_emoji()` removed entirely from this surface.
+- `players/profile.html` — `flag_emoji()` replaced with `get_flag_svg()` inline SVG
+  in the bio grid's Nationality row.
+- `players/compare_view.html` — macro added below each player's club/age line in bio header.
+- `players/_compare_search.html` — inline SVG flag added before player name.
+- `evaluations/form.html` — inline SVG flag added before player name in header strip.
+
+### Files
+
+```
+app/players/eligibility.py                     MOD  — status_code added to all branches
+app/templates/_macros/eligibility_badge.html   NEW  — reusable eligibility badge macro
+app/static/css/style.css                       MOD  — .elig-badge family added
+app/wyscout/aggregations.py                    MOD  — compare_players() gains nationality/eligibility fields
+app/evaluations/__init__.py                    MOD  — _load_player() gains nationality_code
+app/players/__init__.py                        MOD  — compare_search() gains nationality_code
+app/templates/players/_grid.html               MOD  — macro replaces flag_emoji + eligibility text
+app/templates/players/profile.html             MOD  — flag_emoji → get_flag_svg inline SVG
+app/templates/players/compare_view.html        MOD  — macro in bio header
+app/templates/players/_compare_search.html     MOD  — inline flag in search results
+app/templates/evaluations/form.html            MOD  — inline flag in header strip
+migrations/_e2e_phase_6_2_3.py                NEW  — E2E: badge+flag on 5 surfaces, 3 player states
+```
+
+---
+
+## v0.6.2.2 — Phase 6.2.2: BFA board polish (2026-05-12)
+
+Three items from the BFA board meeting post-6.2 review.
+
+### Item 1 — Age at eligibility
+
+For `foreign_residency` players with a **future** eligibility date and
+a known DOB, the eligibility card on the player profile and the passport
+PDF now show:
+
+> Age at eligibility: **N**
+
+This lets the committee see at a glance how old a player will be when
+first available, without opening the full bio.
+
+**Logic:** `age_at_eligibility(player)` in `app/players/eligibility.py`.
+Returns `None` (and the line is suppressed) for: already-eligible players,
+players with no DOB, and non-`foreign_residency` routes. Uses the same
+`_resolve_eligibility_date()` helper that powers the status label — single
+source of truth for the eligibility date (explicit `eligible_from_date`
+first; then `bahrain_residency_start_date + 5y`).
+
+### Item 2 — Bahrain flag for immediately-eligible players
+
+Players who are eligible **right now** (Bahraini citizen, foreign ancestry,
+or residency complete) now show an inline Bahrain flag next to their ✅
+status label on the profile page eligibility card.
+
+**Implementation:** `compute_eligibility_status()` and
+`_build_passport_eligibility()` both now return `is_eligible_now: bool`
+in their dict. The `_eligibility_card.html` template uses the existing
+`get_flag_svg('BHR')` Jinja global (registered in `app/__init__.py`)
+to render the inline SVG flag from `app/static/flags/bh.svg`.
+
+### Item 3 — Wyscout accumulation audit (code-review + diagnostic)
+
+Confirmed by both code review and new diagnostic script that re-uploading
+a Wyscout xlsx is correctly idempotent (UPSERT, no duplicates):
+
+- `schema.sql`: `UNIQUE (player_id, match_label, match_date)` ✅
+- `ingest.py`: `ON CONFLICT (player_id, match_label, match_date) DO UPDATE` ✅
+- `xmax = 0` trick for insert-vs-update counting ✅
+
+No code changes needed. New `migrations/_e2e_phase_6_2_2.py` script
+runs three diagnostic queries: duplicate check (Q1), constraint presence
+(Q2), row count baseline (Q3).
+
+### Files
+
+```
+app/players/eligibility.py                   MOD  — added _resolve_eligibility_date(), age_at_eligibility(); all compute_eligibility_status() branches gain is_eligible_now + age_at_eligibility keys
+app/passport/data.py                         MOD  — _build_passport_eligibility() gains is_eligible_now + age_at_eligibility; imports age_at_eligibility from eligibility
+app/templates/evaluations/_eligibility_card.html  MOD  — Bahrain flag for is_eligible_now; age_at_eligibility line
+app/templates/passport/passport.html         MOD  — age_at_eligibility line after elig-note
+app/templates/passport/_passport.css         MOD  — .elig-age rule added
+app/__init__.py                              MOD  — get_flag_svg Jinja global registered (wraps _flag_svg_inline from passport.data)
+migrations/_e2e_phase_6_2_2.py               NEW  — 4-check Wyscout idempotency diagnostic (Q1 duplicates, Q2 constraint, Q3 row count)
+```
+
+---
+
+## v0.6.2.1 — Phase 6.2.1: Admin notes hidden from user-facing surfaces (2026-05-11)
+
+Browser spot-check after 6.2 surfaced sentinel test data
+(`E2E-SENTINEL-…-DO-NOT-PUBLISH-elig` / `…-resid`) rendering as
+**"Eligibility notes (admin):"** and **"Residency notes (admin):"** in
+Arthur's passport. The data layer was correct — those strings came
+from real `players.eligibility_notes_admin` /
+`players.bahrain_residency_notes` values written by a prior E2E run
+that didn't get to its `finally:` restore.
+
+The real lesson: **admin notes are admin scratchpad. They don't
+belong in any user-facing artefact, formal documents in particular.**
+
+### Contract change
+
+| Surface | 6.0 contract | 6.2.1 contract |
+|---|---|---|
+| Passport PDF — full mode | renders admin notes | **does NOT render** |
+| Passport PDF — public mode | scrubbed | **does NOT render** |
+| Player profile page | (didn't render) | (still doesn't render) |
+| Eligibility card include | (didn't render) | (still doesn't render) |
+| `/players/<id>/edit` admin form | renders form fields | **renders form fields** (kept — admin authors them here) |
+| `/players/new` admin form | renders form fields | **renders form fields** (kept) |
+| DB columns | preserved | **preserved** |
+| DB data | preserved | **preserved** (sentinel test data NOT scrubbed per Ali's call) |
+
+### Grep audit performed before edits
+
+Searched `app/**/*.{py,html}` for `eligibility_notes_admin` and
+`bahrain_residency_notes`. Classified every hit:
+
+- Backend Python (`app/players/__init__.py`, `app/passport/data.py`) —
+  KEEP (form handling, SQL plumbing)
+- Admin forms (`templates/players/edit.html`, `templates/players/new.html`)
+  — KEEP (where admin authors them)
+- **`templates/passport/passport.html`** — the only user-facing surface
+  rendering these fields. REMOVED the two `{% if %}` rendering blocks.
+- `templates/players/profile.html`, `templates/evaluations/_eligibility_card.html`,
+  `templates/evaluations/_history_card.html` — confirmed they don't
+  reference these fields (no edit needed).
+
+### Files
+
+```
+app/templates/passport/passport.html    MOD  — removed the two `{% if player.<admin_note> %}` blocks + corresponding top-of-file docstring update
+app/templates/passport/_passport.css    MOD  — removed `.elig-admin-note` rule (was only used by the deleted blocks)
+migrations/_e2e_phase_6.py              MOD  — Case 3 contract flipped: admin notes now hidden in BOTH modes, not just public
+migrations/_e2e_phase_6_2_1.py          NEW  — 23-check E2E (inject sentinels → assert non-render in full PDF + public PDF + profile HTML → assert presence in admin edit form → restore DB)
+```
+
+The passport data layer's public-mode scrub in
+`app/passport/data.py:_build_passport_eligibility` is now redundant
+(the fields aren't rendered at all) but kept as belt-and-braces.
+
+### Verified end-to-end
+
+- **6.2.1 E2E: 23/23 PASS** ([migrations/_e2e_phase_6_2_1.py](migrations/_e2e_phase_6_2_1.py))
+  - Sentinels (`S621-ELIG-<pid>-DO-NOT-PUBLISH`, `S621-RESID-…`)
+    injected into Arthur's DB columns, then:
+  - Full PDF text does NOT contain either sentinel
+  - Full PDF text does NOT contain the `Eligibility notes (admin)` or
+    `Residency notes (admin)` labels
+  - Public PDF: same assertions hold (already redacted before 6.2.1;
+    now hidden at the template layer too)
+  - Profile page HTML: does NOT contain sentinels (regression guard —
+    the profile already didn't render these, but the assertion makes
+    that explicit)
+  - Admin edit page HTML: DOES contain both sentinels (proves DB
+    plumbing intact — form fields prefilled with the values)
+  - Template literal check: `passport.html` has no
+    `{% if player.eligibility_notes_admin %}`, no
+    `{{ player.eligibility_notes_admin }}`, etc.
+  - DB values restored to prior state in `finally:`
+- **6.0 regression: 26/26 PASS** after Case 3 contract update
+  (admin notes now hidden in BOTH modes, not just public)
+- **6.1 regression: 57/57 PASS**
+- **6.2 regression: 26/26 PASS**
+
+132 checks across all four suites. Visual spot-check confirmed: a
+PDF generated with sentinels actively present in the DB shows only
+the eligibility status line + residency-since line. No admin notes,
+no orphan whitespace, eligibility section flows cleanly into the
+Wyscout section below.
+
+### Out of scope (unchanged)
+
+- DB columns and existing values: untouched.
+- Admin edit form (`players/edit.html`, `players/new.html`): unchanged.
+- `app/passport/data.py` public-mode scrub: kept (redundant but harmless).
+- Passport mode split (full vs public): unchanged.
+
+## v0.6.2 — Phase 6.2: PDF page-1 layout fix + passport button reposition (2026-05-11)
+
+Three items on top of 6.1 — two PDF-layout regressions surfaced on
+browser spot-check, plus a profile-page UX nit:
+
+1. A faint **"decorative wave / scribbled red line"** between sections
+   on page 1 (above "National-Team Eligibility" most visibly). At
+   high-DPI rasterization the lines render as perfectly straight
+   solid 1pt rules — but Edge/Chrome's built-in PDF viewers
+   anti-alias 1pt rules at non-integer pixel positions into
+   wavy/dithered gradients. Ali was seeing real subpixel render
+   noise, not a stray asset.
+2. **Radar banished to page 2 alone.** The 6.1 "remove explicit page-
+   break, let WeasyPrint paginate" change was too conservative — page
+   1 ended mid-content (bio + eligibility + stats) and page 2
+   contained just the radar + scout assessment. Unprofessional white
+   space at the foot of page 1.
+3. **Passport download buttons buried at the bottom of the profile
+   page.** Committee reviewers had to scroll past the entire Wyscout
+   dashboard + scout-evaluation history just to find the printable
+   artefact. Moved the block to sit directly below the header strip
+   and directly above the eligibility card.
+
+### Fixes
+
+**Item 1 — h3 underline removed.**
+- Stripped `border-bottom: 1pt solid #B5924C` and `padding-bottom`
+  from the global `h3` rule. The BFA-red bold heading (now bumped
+  one notch to 11.5pt / 700) is plenty of visual separation on its
+  own.
+- Kept the `.passport-header` 2pt red rule — 2pt is robust against
+  the subpixel-rasterization noise that bit the 1pt rules.
+- No `<hr>` was ever present; no `wavy` text-decoration anywhere;
+  pre-flight grep confirmed both before any edit. The fix is
+  defensive: thin solid rules are inherently fragile in PDF
+  viewers, so dropping them altogether is the durable answer.
+
+**Item 2 — side-by-side stats + radar.**
+- `.wyscout-grid` flipped from `display: block` (6.1) back to
+  `display: flex` with a 55% / 45% split. Stats table on the left,
+  radar on the right. Heading + season subtitle stay outside the
+  flex container so they span the full row width above both columns.
+- `page-break-inside: avoid` on `.wyscout-grid` so the layout never
+  splits across pages.
+- Radar SVG geometry re-tightened: viewBox `360 → 320`, margin
+  `22% → 18%`. The narrower viewBox fits the 45% column while
+  keeping label headroom (incl. "Work Rate" — the longest axis
+  label). CSS now sizes the SVG to `width: 100%; height: auto;`
+  (was a hardcoded `height: 220pt` in 6.1) so it scales to whatever
+  the column width is.
+
+### Page-budget contract for page 1
+
+After these changes, page 1 contains (top→bottom):
+```
+Header (BFA brand · Player Passport · 2pt red rule)
+Bio strip (photo · name · DOB · position · club · nationality+flag)
+National-Team Eligibility (icon · label · residency-since)
+Wyscout Career Statistics (h3) + season subtitle
+[ Stats table  55% | Radar SVG 45% ]
+```
+Page 2 = scout assessment only (latest panel + history table + footer).
+**Exactly 2 pages**, no overflow, no banished elements.
+
+### Item 3 — passport button moved below header
+
+The passport download block (Player Passport h2 + full-mode and
+public-redacted buttons) was last in `app/templates/players/profile.html`
+in 6.0–6.1, below the scout-history panel. Cut and re-inserted between
+the header strip's closing `</div>` and the eligibility card include.
+Now sits directly below the player header strip and directly above
+the eligibility card. The block's `id="player-passport"` is preserved
+(so any existing deep-link / anchor still resolves). Move, not duplicate
+— grep confirms exactly one `id="player-passport"` and exactly two
+`/passport.pdf` anchors in the rendered HTML. Loading state +
+pointer-events:none CSS travelled with the block; behaviour
+unchanged.
+
+DOM-order verification of the rendered profile page (`/players/2`):
+```
+Header strip image (player photo)         @ 5419
+Player Passport h2                        @ 8879
+Download Passport button                  @ 9478
+Public PDF button                         @ 9923
+National-Team Eligibility h2              @ 10324
+Wyscout Dashboard                         @ 11368
+```
+
+### Files
+
+```
+app/templates/passport/_passport.css   MOD — h3 rule sans border, wyscout-grid flex 55/45 with page-break-inside avoid
+app/passport/radar_svg.py              MOD — viewBox 360→320, margin 22%→18% (default size param updated)
+app/templates/players/profile.html     MOD — passport block moved from end-of-page to between header strip and eligibility card
+migrations/_e2e_phase_6_1.py           MOD — best-effort artefact writes (locked-file resilience)
+migrations/_e2e_phase_6_2.py           NEW — 26-check E2E for the layout deltas
+```
+
+The passport HTML template was unchanged — its structure already had
+the h3 + stats-subtitle outside `.wyscout-grid`. The fix landed
+entirely in CSS + the SVG generator's geometry constants.
+
+### Verified
+
+- **6.2 E2E: 26/26 PASS** ([migrations/_e2e_phase_6_2.py](migrations/_e2e_phase_6_2.py))
+  - Arthur PDF exactly 2 pages
+  - All 6 radar axis labels present on page 1
+  - 0 radar axes leak to page 2
+  - h3 rule has no `border-bottom:` or `border:` property
+    (CSS comments stripped before matching, so the explanatory
+    backtick-quoted `border-bottom:` doesn't trick the assertion)
+  - No `text-decoration: wavy` rule anywhere; no `<hr>` element
+  - `.passport-header` still has its robust 2pt red rule (regression
+    guard — we didn't strip the page-header's landmark, just the
+    fragile h3 ones)
+  - `.wyscout-grid` uses `display: flex` with `page-break-inside:
+    avoid`; stats column is `flex: 0 0 55%`, radar is `0 0 45%`
+  - h3 and stats-subtitle appear before `.wyscout-grid` in the
+    template DOM order (so they span the full width above both
+    columns)
+  - Bouhra and the public-mode PDF also exactly 2 pages with all 6
+    radar axes on page 1
+- **6.1 regression E2E: 57/57 PASS** (after a small E2E hardening:
+  the end-of-run artefact dumps are now best-effort, so a locked
+  file in `D:\tmp\` from a prior session doesn't fail the whole run)
+- **6.0 regression E2E: 26/26 PASS**
+- **Visual spot-check** (pypdfium2 rasterize at 2x):
+  - Arthur full (63KB, 2pp): clean page 1 with side-by-side stats +
+    radar, all 6 axes readable, scout-section on page 2
+  - Arthur public (63KB, 2pp): same layout + `PUBLIC` badge,
+    redactions intact (`Scout 1`, "BFA Scouting Department")
+  - Bouhra full (57KB, 2pp): same layout; eligibility wording from
+    6.1 still verbatim — "⏳ Eligible from 2027-08-15 (in 1 year,
+    3 months) / Bahrain residency since 2022-08-15"
+
+### Out of scope (carried forward)
+
+- Eligibility status icons (✅/⏳/❌/?) still render as monochrome
+  outline glyphs in some viewers — same emoji-font fragility as the
+  flags before 6.1; could be swapped to inline SVG using the same
+  pattern when committee reviewers flag it.
+- PDF caching (deferred).
+- `season_label_for_date` (4.1 helper, unused, slash format) — flag
+  for rename-or-delete when Phase 4.2.1 lands.
+
+## v0.6.1 — Phase 6.1: PDF polish (2026-05-11)
+
+Five-item patch on top of the v0.6.0 Player Passport landing. Browser
+spot-check by Ali surfaced clipped radar labels, FIFA-jargon wording in
+the eligibility card, unreliable emoji flags, missing season context on
+the Wyscout heading, and "did my click register?" ambiguity on slow
+PDF generations. All five addressed; PDF stays at the spec's two-page
+maximum.
+
+### Item 1 — radar layout & geometry
+
+Two compounding causes for the clipped axis labels:
+- **CSS**: the previous `.wyscout-grid` flex layout put the stats table
+  on the left and the radar on the right; the radar's flex column
+  was narrow, so the SVG scaled down — labels at θ=±60° crossed the
+  column edge and were clipped by container `overflow`.
+- **SVG**: the viewBox was 280×280 user-units with internal margin 12%
+  (33 units). "Passing" at axis 2 (θ=−π/6) had its label anchor at
+  x≈245 with the text extending right to x≈295 — past the right edge
+  of the 280-unit viewBox.
+
+Fix: switched `.wyscout-grid` from flex to block (stats top, radar
+below); expanded SVG viewBox to 360×360 with 22% margin; tightened the
+page-1 vertical rhythm so the radar still fits without overflow
+(h3 margin 14→10pt; bio photo 100→84pt; bio margins trimmed; stats-
+table row padding 3→1.5pt; radar height 320→220pt). Removed the
+explicit `<div class="page-break">` — relied on natural pagination
+plus `page-break-inside: avoid` on `.scout-section` and `.latest-eval`.
+End result: page 1 = bio + eligibility + stats table; page 2 = radar
++ scout assessment + footer. Verified all 6 axis labels readable
+("Scoring 39", "Passing 57", "Dribbling 23", "Defending 48", "Aerial 16",
+"Work Rate 79").
+
+### Item 2 — eligibility wording
+
+`compute_eligibility_status` in `app/players/eligibility.py` (the
+live profile UI's source of truth) returns "Eligible in 1y 3m /
+Suggested 2027-08-15 (Article 5; admin to confirm)" — too casual for
+the PDF's formal context and exposes regulation jargon to committee
+readers.
+
+New `_build_passport_eligibility(player)` in `app/passport/data.py`
+mirrors the 6-priority branch order but with reformatted wording:
+"Eligible from 2027-08-15 (in 1 year, 3 months) / Bahrain residency
+since 2022-08-15". Helper `_humanize_duration(years, months)` expands
+abbreviations and pluralizes correctly ("1 year" vs "2 years, 1 month";
+"less than 1 month" for sub-30-day deltas). The second line (residency-
+since) renders only for `nationality_status='foreign_residency'` with
+a non-NULL `bahrain_residency_start_date`; other branches return
+`note=None` and the template omits the second line.
+
+7 cases asserted in the E2E (bahraini / foreign_ancestry / future-
+dated / past-dated / pending / not_eligible / unknown), all PASS.
+
+### Item 3 — flag SVG
+
+Emoji flags ("🇧🇷") rendered unreliably under WeasyPrint — Pango's
+fallback font chain on Windows doesn't always include a color-emoji
+font, and the regional-indicator codepoints often degraded to
+square outline boxes.
+
+Vendored **271 SVGs** from the upstream
+[flag-icons](https://github.com/lipis/flag-icons) project (MIT-licensed
+— attribution copied to `app/static/flags/LICENSE-flag-icons` and
+`README.md`). Total bundle ~2.4 MB; each file ~1-3 KB. Filenames are
+ISO 3166-1 alpha-2 codes (`bh.svg`, `br.svg`, `ma.svg`, ...). New
+`_flag_svg_inline(alpha3_code)` helper in `app/passport/data.py`
+translates the platform's alpha-3 codes via the existing
+`ALPHA3_TO_ALPHA2` map, reads the file, and returns the inline SVG
+string (or `None` for unknown codes; template skips the flag span
+when None). Inline SVG sized to 18pt × 13.5pt (4:3 ratio matching
+the flag-icons "4x3" set), bordered for clarity.
+
+### Item 4 — Wyscout subtitle
+
+New `_build_season_subtitle(player_id)` in `app/passport/data.py`
+emits one of:
+- "YYYY-YY season · N matches"
+- "YYYY-YY to YYYY-YY · N matches"
+- (or None if no Wyscout data — template omits the subtitle line)
+
+Format kept as `'YYYY-YY'` (hyphen — matches Phase 4.2's `derive_season`
+and the live DB column). The 4.1 helper `season_label_for_date` returns
+slash-format but is currently unused anywhere in the codebase, so
+the format mismatch flagged at end of 4.2 is now a "rename
+`season_label_for_date` or delete it" cleanup item (recorded in
+PROJECT.md follow-ups, not done in this patch).
+
+### Item 5 — timing instrumentation + UI loading indicator
+
+`render_passport_pdf` now logs `template=...s  weasyprint=...s
+total=...s  bytes=...` at WARNING level (Flask's default level filters
+out INFO). Sample measurements on this Windows + GTK dev box:
+
+```
+passport PDF render: template=0.019s  weasyprint=11.95s  total=11.97s  bytes=62464
+passport PDF render: template=0.000s  weasyprint=12.40s  total=12.40s  bytes=62951
+```
+
+Template phase is ~20ms (no N+1 queries); WeasyPrint dominates at
+~12s. **PDF generation latency is therefore ~12s on Windows due to
+GTK Pango overhead.** Production Linux deployment will be
+significantly faster (typical ~2-3s for the same workload).
+PDF caching not implemented in v1 — regenerated per request.
+
+UI: the profile-page download buttons now show "⏳ Generating…" on
+click via inline JS, with `pointer-events: none` to swallow
+double-clicks during generation. No JS library dependency. Since
+the click initiates a file download (not a navigation), the page
+itself stays put — once the download arrives the user moves on.
+The 5-10s expectation is also written into the button's `title`
+hover tooltip.
+
+### Files
+
+```
+app/passport/data.py                     MOD — passport-specific eligibility, flag SVG loader, season subtitle helper
+app/passport/renderer.py                 MOD — timing instrumentation (WARNING-level log)
+app/passport/radar_svg.py                MOD — viewBox 280→360, margin 12%→22%, label headroom
+app/templates/passport/passport.html     MOD — subtitle line, inline SVG flag, page-break div removed
+app/templates/passport/_passport.css     MOD — block layout for wyscout-grid, tightened page-1 rhythm, flag-inline sizing, page-break-inside avoid on scout panels
+app/templates/players/profile.html       MOD — passport-btn class + onclick loading state + pointer-events:none
+app/static/flags/                        NEW — 271 SVGs + README + LICENSE-flag-icons (MIT)
+migrations/_e2e_phase_6_1.py             NEW — 57-check E2E for the polish deltas
+```
+
+No schema changes; no migrations; no Python deps added.
+
+### Verified
+
+- **6.1 E2E: 57/57 PASS** ([migrations/_e2e_phase_6_1.py](migrations/_e2e_phase_6_1.py))
+  - All 6 radar axis labels present in PDF text (no clipping)
+  - 'Eligible from' + 'Bahrain residency since' present; 'Article 5'
+    and 'admin to confirm' absent
+  - 7 eligibility branches asserted via `_build_passport_eligibility`
+  - Flag SVG loads for BRA/BHR/MAR, returns None for unknown
+  - `class="flag-inline"` + `<svg>` present in rendered HTML
+  - Wyscout subtitle "2025-26 season · 18 matches" present
+  - Profile-page button has `passport-btn` + onclick + `pointer-events: none`
+  - Timing log captured in Flask log; template < 1s sanity, weasyprint > 0
+- **6.0 regression E2E: 26/26 still PASS** ([migrations/_e2e_phase_6.py](migrations/_e2e_phase_6.py))
+  — Phase 6's behaviours intact (filename pattern, public-mode
+  redaction, 404s, audit log, etc.)
+- **Visual spot-check** (rasterized via pypdfium2):
+  - Arthur full (62KB, 2pp): page 1 bio+eligibility+stats; page 2 radar+scout
+  - Arthur public (63KB, 2pp): identical layout + 'PUBLIC' badge + 'Scout N' redaction
+  - Bouhra full (57KB, 2pp): eligibility wording matches spec table verbatim
+    — "⏳ Eligible from 2027-08-15 (in 1 year, 3 months) / Bahrain residency since 2022-08-15"
+
+### Out of scope (for v0.6.1)
+
+- Eligibility status icons (✅/⏳/❌) still render as monochrome outline
+  glyphs (same emoji-font fragility we fixed for flags); could be
+  swapped to inline SVG too if the monochrome rendering bothers
+  committee reviewers
+- PDF caching (deferred — single-digit-second latency acceptable in v1)
+- `season_label_for_date` (4.1) format alignment with the DB column
+  — function is currently unused, low priority
+
+## v0.6.0 — Phase 6: Player Passport PDF (2026-05-11)
+
+The demo-ready milestone — the printable artifact BFA committee members
+take home from selection meetings. Two-page A4 PDF: bio + eligibility +
+Wyscout career stats + 6-axis radar (page 1), scout evaluations + history
+table + audit footer (page 2). Bilingual EN/AR. Major version bump
+(0.5.x → 0.6.0): first non-incremental user-facing artifact, not just an
+admin-facing data fix.
+
+### Locked decisions
+
+| Decision | Choice |
+|---|---|
+| PDF library | WeasyPrint 68.1 (HTML+CSS → PDF; requires GTK runtime on Windows) |
+| Page size | A4 portrait, 20mm margins |
+| Fonts | Inter (system fallback to Segoe UI) Latin; Cairo (system fallback to Segoe UI) Arabic |
+| Branding | BFA red `#C8102E` for headings, gold `#B5924C` for accents, white background (printable) |
+| Photos | base64 data-URI embed (self-contained PDF, no network at render time) |
+| Radar | Hand-built 6-axis SVG (`app/passport/radar_svg.py`) — no JS, no Chart.js |
+| Caching | None for v1 — regenerate per request |
+| Filename | `BFA-Scout_Player-{id}_{slug}_{YYYY-MM-DD}.pdf` |
+
+### Two modes
+
+**Full** (admin / TD / scout, default route): scout names, evaluation
+summaries, admin eligibility notes — everything visible.
+
+**Public** (`?public=1`, any authenticated user): redacted for sharing
+with player agents or external clubs.
+- Scout names → `Scout 1` / `Scout 2` / … (stable per-passport mapping;
+  same human keeps the same number across the latest panel AND the
+  history table)
+- `eligibility_notes_admin` and `bahrain_residency_notes` stripped
+- **Generator name redacted** to `BFA Scouting Department` in the
+  footer (design call — not in the original spec, but implied by the
+  "for sharing externally" use case; named explicitly here so the
+  next maintainer doesn't accidentally un-redact it)
+- Header gets a `PUBLIC` badge, footer notes "scout identities redacted"
+
+### Files
+
+```
+app/passport/__init__.py           NEW — Blueprint + route + filename slugify + photo embed
+app/passport/data.py               NEW — get_passport_data(player_id, mode)
+app/passport/radar_svg.py          NEW — hand-built 6-axis radar SVG
+app/passport/renderer.py           NEW — WeasyPrint orchestration
+app/templates/passport/passport.html  NEW — page 1 + page break + page 2
+app/templates/passport/_passport.css  NEW — print stylesheet
+app/templates/players/profile.html    MOD — Phase 6 placeholder → real download buttons
+app/__init__.py                    MOD — register passport blueprint
+migrations/_e2e_phase_6.py         NEW — 26-check end-to-end (real Flask + real HTTP)
+```
+
+No schema changes.
+
+### Data layer (`app/passport/data.py`)
+
+Pure read-side. Composes existing helpers across `app/players`,
+`app/evaluations`, and `app/wyscout` — no new SQL helpers below.
+
+- Wyscout summary mapped from `get_player_summary()`'s actual field
+  names (`matches`, `total_minutes`, `total_goals`, ..., `pass_accuracy`,
+  `duel_win_rate`) — the spec template used different names like
+  `wyscout.matches_count`, `pass_pct`; the data layer normalises to the
+  passport template's shape so the template stays clean.
+- `aerial_won_pct` computed inline from `wyscout_match_stats`
+  aggregation — `get_player_summary()` doesn't include this metric.
+- 6-axis radar uses **existing `RADAR_AXES`** (Scoring / Passing /
+  Dribbling / Defending / Aerial / Work Rate) — the spec's described
+  axes (Goals/90, Pass %, etc.) differ from what's actually in
+  `app/wyscout/helpers.py`. Codebase wins per the (1.5) playbook:
+  consistency with the existing player-profile radar matters more
+  than spec-template fidelity.
+- Soft-delete invariant honoured via `get_player_evaluations()`
+  (Phase 5c-3); locked evaluations INCLUDED (locked is workflow
+  protection, not data hiding).
+- `is_active=FALSE` (deactivated) players return None → route emits 404.
+
+### Renderer (`app/passport/renderer.py`)
+
+Single function `render_passport_pdf(data)` — renders `passport.html`
+with the data dict and pipes it through WeasyPrint with the print CSS.
+`base_url` set to `current_app.root_path` to resolve any relative
+asset references (defensive — photos are embedded as data URIs so this
+is belt-and-braces only).
+
+### Radar SVG (`app/passport/radar_svg.py`)
+
+Self-contained 6-axis polygon SVG. Hand-built (~150 lines of Python):
+- 5 concentric grid polygons at 20/40/60/80/100 (the 100 ring slightly
+  darker for the bounding edge)
+- 6 axis spokes from centre to outer vertex
+- Polygon for player scores (BFA red, 30% alpha, dotted vertices)
+- Axis labels + numeric values just outside the 100 ring
+- Tick labels (20/40/60/80) on one spoke
+
+No fonts embedded — uses `font-family="Inter, Arial, sans-serif"` as a
+hint; WeasyPrint resolves via system fontconfig.
+
+### Pre-flight environment note
+
+WeasyPrint requires the **GTK runtime** on Windows (Pango / GLib /
+cairo native DLLs). On this machine, none of the usual sources
+(MSYS2, GTK3-Runtime installer, Inkscape, GIMP) were installed — caught
+during pre-flight via `import weasyprint; weasyprint.HTML(...).write_pdf()`
+raising `OSError: libgobject-2.0-0.dll could not be found`. Surfaced as
+a three-way choice (install GTK / fall back to xhtml2pdf / fall back to
+ReportLab); Ali picked GTK install. After that, WeasyPrint loaded
+cleanly and the spec's HTML/CSS template landed verbatim with proper
+Arabic shaping for player names like `سيف الدين بوحرة`.
+
+### Pre-flight catches surfaced before any code landed
+
+1. `get_player_photo(player_id, national_id)` per spec — actual signature
+   is 1 arg and returns a URL not a path. Wrote `_resolve_photo_data_uri`
+   in the passport package to read the file and base64-embed it.
+2. Wyscout summary field names differ from spec template; mapped in data layer.
+3. Radar axes differ from spec; used existing `RADAR_AXES`.
+4. No BFA logo asset in repo; rendered a styled `BFA` text mark instead.
+5. No fonts directory; rely on system fontconfig (Cairo if installed
+   system-wide, Segoe UI for Arabic on Windows).
+6. **Pre-existing 4.2 cleanup item flagged** (not in scope): two
+   season helpers now exist with different output formats —
+   `app/wyscout/helpers.py:season_label_for_date` (returns `'2024/25'`)
+   vs `app/wyscout/season.py:derive_season` (returns `'2024-25'`).
+   `season_label_for_date` is currently unused but if anything starts
+   calling it the formats won't match.
+
+### Verified end-to-end
+
+**26 / 26 synthetic E2E checks PASS**
+([migrations/_e2e_phase_6.py](migrations/_e2e_phase_6.py)):
+
+- Case 1 — Full-mode PDF: HTTP 200, `application/pdf`, `%PDF-` magic,
+  53,313 bytes, filename `BFA-Scout_Player-2_arthur-rezende_2026-05-11.pdf`
+- Case 2 — Public-mode redaction (text-extracted via pypdf): real scout
+  name `'Initial Administrator'` does NOT appear in public PDF text;
+  DOES appear in full PDF text; `Scout 1` marker present; footer says
+  "redacted"
+- Case 3 — Admin notes scrubbed: live-DB sentinel strings injected into
+  `eligibility_notes_admin` and `bahrain_residency_notes`; absent from
+  public PDF, present in full PDF; sentinels restored to prior values
+- Case 4 — 404s for nonexistent (id=10031) and deactivated (id=1, Sayed)
+  players
+- Case 5 — Audit log: 4 rows generated this run with `player_id` + `mode`
+  in `details`; both `full` and `public` modes recorded
+- Case 6 — Unauthenticated request bounces to `/auth/login?next=...`
+- Case 7 — Sparsest-data player (Gelonson, 15 Wyscout rows + 0 evals):
+  PDF still generates cleanly with the page-2 empty-state panel
+
+Visual inspection (pypdf text-extract) confirmed:
+- Page 1: bio grid + eligibility card + Wyscout 10-metric table +
+  6-axis radar with numeric labels at vertices
+- Page 2: latest-eval panel with NT-level/recommendation badges +
+  4 category-average bars + recent-evaluations table (date / scout /
+  match / NT level / recommendation) + footer with generator name
+- Public mode: `PUBLIC` badge in header, all scout names → `Scout 1`,
+  generator → `BFA Scouting Department`, footer redaction notice
+
+## v0.5.0-4-2 — Phase 4.2: Season column + backfill (2026-05-11)
+
+Minimal infrastructure phase — closes the gap where `wyscout_match_stats`
+had no first-class season notion. Schema + ingest only; no UI work
+(deferred to Phase 4.2.1 when multi-season data exists). Project status
+~92%.
+
+### Schema
+- New `wyscout_match_stats.season VARCHAR(7)` column. Nullable
+  (defensive — current schema has `match_date NOT NULL`, so `season`
+  is effectively NOT NULL via implication, but keeping the column
+  nullable survives a future relax).
+- New `idx_wyscout_match_stats_season` index for the season filter
+  UI that 4.2.1 will add.
+- `schema.sql` updated declaratively — column inline in the CREATE
+  TABLE, index next to the four existing wyscout_match_stats indexes.
+  No ALTER statements in `schema.sql`.
+
+### Python helper (`app/wyscout/season.py`)
+- `derive_season(match_date: date) -> str` — single source of truth.
+  BPL season runs Aug–May (`SEASON_START_MONTH = 8`); a match in
+  Aug 2025 → '2025-26'; a match in Apr 2026 also → '2025-26'.
+- Returns `'<startYear>-<endYearLast2>'` with zero-pad (year 2000 → '00').
+
+### Ingest path (`app/wyscout/ingest.py`)
+- Imports `derive_season`; computes per-row `season = derive_season(match_date)`
+  inside the existing UPSERT loop.
+- Threads `season` through the dict-based `vals = {...}` pattern. Since
+  column lists are built from `vals.keys()` and the UPDATE-SET excludes
+  only the conflict-key cols (`player_id`, `match_label`, `match_date`),
+  the new column is automatically present in both the INSERT and the
+  `season = EXCLUDED.season` UPDATE clause — no hand-rolled SQL.
+
+### Migration artifact (`migrations/phase_4_2_season_column.sql`)
+- Generator (`_generate_phase_4_2.py`) asserts 5 `derive_season` unit
+  tests pass BEFORE emitting SQL (cross-year boundaries: Jul/Aug pivot,
+  Apr-of-following-year, next-season start).
+- Pre-flight gates:
+  - `wyscout_match_stats.season` must not already exist (one-shot guard)
+  - all `match_date` values must fall in [2025-08-01, 2026-08-01) —
+    the verified 2025-26 window. Migration RAISEs if a multi-season
+    import has already landed; in that case regenerate with a widened
+    audit gate first.
+- Backfill: SQL CASE mirrors `derive_season()` exactly using
+  `% 100` + `LPAD(..., 2, '0')`. The spec's original
+  `LPAD(...)::TEXT[3:4]` syntax doesn't parse on Postgres (array
+  slicing not applicable to TEXT) — caught + fixed in pre-flight.
+- Audit gate computes `expected` dynamically (`COUNT(*) WHERE
+  match_date IS NOT NULL`), not hardcoded — the spec's `expected =
+  34` was already stale (49 rows today). RAISEs if any
+  match_date-bearing row has NULL season, or if the `'2025-26'` count
+  doesn't equal the expected count.
+
+### Verified end-to-end
+
+**18 / 18 synthetic E2E checks PASS** ([migrations/_e2e_4_2.py](migrations/_e2e_4_2.py)):
+
+- Column shape: `VARCHAR(7)`, nullable, present
+- All 49 existing rows have season set; all are `'2025-26'`
+- Python helper vs DB cross-check: `derive_season(match_date) ==
+  row.season` for all 27 distinct match_dates in the live DB
+- Real-pipeline re-upload of Arthur's xlsx via `ingest_wyscout()`
+  (NOT `flask.test_client`): status=success, 0 inserted / 18 updated /
+  0 skipped; row count unchanged at 18; all rows still
+  `season='2025-26'` after UPSERT
+- Per-player breakdown:
+  Arthur Rezende 18, Gelonson Wilson Da Silva Moreira 15,
+  Saifaldeen Bouhra 16 = 49 rows, all '2025-26'
+
+### Migration discipline (standard pattern)
+1. `_generate_phase_4_2.py` (assert 5 unit tests, emit SQL)
+2. `_dryrun_4_2.py` (savepoint + rollback against live DB)
+3. `_apply_4_2.py` (same SQL, COMMITs on audit pass)
+4. `_verify_throwaway_4_2.py` (fresh schema, run `schema.sql`,
+   confirm column shape + index + 5 wyscout indexes)
+5. `_e2e_4_2.py` (cross-check Python ↔ SQL + UPSERT preservation)
+
+### Out of scope (deferred to Phase 4.2.1)
+- Season-toggle UI on `/players/compare/view` and player profile dashboard
+- Multi-season aggregations in scout dimension
+- Gated on a second season of data existing — adding a UI toggle for a
+  single-value column would just be visual noise
+
+## v0.5.0d.1 — Phase 5d-1: Scout-assessment radars (2026-05-10)
+
+UI-only follow-up to 5d. Adds Chart.js radar visualisations to the scout
+section: one category-level overview + one per-category drill-down (5 in
+total). Pure read-side; no schema changes, no new helpers below the data
+shaper. Project status ~92%.
+
+### What landed
+
+**Item A — Top "category averages" radar.** 4-axis (Technical / Tactical /
+Physical / Mentality) overlapping radar above the per-category drill-down,
+one polygon per selected player. Built from `category_averages` already
+aggregated in Phase 5d. BFA red + gold + blue palette (matches the
+Wyscout overlapping radar in `compare.js` for visual cohesion).
+
+**Item C — Per-category drill-down radars.** One additional radar inside
+each category's `<details>` block, with axes = criterion `name_en` for
+that category. For the AM ∪ DM union covered in the 5d patch E2E, axes
+counts are Technical 8, Tactical 20, Physical 15, Mentality 6 = 49 total
+(matches the criteria-union row count in the existing drill-down table).
+
+**N/A handling.** Chart.js radar treats null values as polygon gaps
+(visually messy when one player has 12/16 axes filled and another has
+9/16). Untouched and N/A criteria therefore plot as 0 to keep polygons
+closed; tooltips read "N/A" or "— (not in player profile)" so the truth
+is never lost in the hover. Wired through parallel `values` /
+`annotations` arrays per dataset, computed in `build_scout_radar_data`
+and consumed by `scout_radars.js`.
+
+**HTMX-aware re-init.** All 5 radars re-render when the Latest ↔ Averaged
+toggle swaps `#scout-section`. `scout_radars.js` listens for
+`htmx:afterSwap` (filtered by `event.detail.target.id === 'scout-section'`),
+and `Chart.getChart(canvas)?.destroy()` runs before each re-create to
+avoid leaks. The partial route returns the section markup including the
+canvases but NOT the script tag (the JS is already loaded from the
+initial page render).
+
+**Eager init, not lazy.** Phase 5d's `<details open>` decision means all
+4 sub-collapses are visible on page load — lazy-init would just delay
+rendering the user already wants to see, with zero saving. Decision
+explicitly documented in `scout_radars.js`.
+
+**Scale = 0..10 (matches `criteria.scale_max`).** Caught a pre-flight
+miss before commit: I'd assumed 0..5 from memory of the slider component,
+but the schema and seed both confirm 1..10 (DB scores currently span
+[2.0, 10.0]). Radar axis: `min: 0, max: 10, stepSize: 2`; tooltip suffix
+`/ 10`. The (1.5)-class lesson is now in the standing playbook: if a
+spec assumption contradicts a codebase decision, surface it before
+building.
+
+### Files
+
+- `app/evaluations/helpers.py` — new `build_scout_radar_data(data,
+  grouped_criteria)` pure transform; returns
+  `{category, per_category}` Chart.js-ready configs
+- `app/players/__init__.py` — `_enrich_for_scout_section` calls the
+  new helper and threads `scout_radar_data` to the template context
+- `app/templates/players/_compare_scout_section.html` — new top-radar
+  block above the drill-down `<details>`
+- `app/templates/players/_compare_scout_drilldown.html` — per-category
+  radar canvas above each category's table (inside the `<details>` block)
+- `app/templates/players/compare_view.html` — `<script>` tag for
+  `scout_radars.js` (defer-loaded after `compare.js`)
+- `app/static/js/scout_radars.js` — NEW. Eager DOMContentLoaded init +
+  htmx:afterSwap re-init; Chart.js radar with 0..10 scale, BFA palette,
+  annotation-aware tooltips
+
+### Verified end-to-end
+
+**39 / 39 synthetic E2E checks PASS** ([migrations/_e2e_5d_1.py](migrations/_e2e_5d_1.py)):
+
+- Page render: 5 canvases on full-page render in latest mode (1 category
+  + 4 per-category); 4 fixed top axes; 2 datasets (one per player)
+- Per-category axis counts [6, 8, 15, 20] = 49 total — matches the AM∪DM
+  criteria union sanity-checked in the 5d patch E2E
+- All values numeric in [0, 10]; no nulls (N/A and absent plot as 0)
+- Annotation distribution exercises all three states: rated=41, na=1,
+  absent=56 (cross-position non-applicable cells dominate, as expected)
+- Averaged mode: 5 canvases on the swapped page; top-radar values differ
+  from latest mode (sample diff: TECH 5.0 → 7.5 for player 6) — toggle
+  visibly reshapes polygons
+- HTMX partial: returns 5 canvases (so re-init has targets) but NOT the
+  script tag (JS already loaded)
+- JS sanity: defines `initScoutRadars`; calls
+  `Chart.getChart(canvas).destroy()` before re-create; wires
+  `DOMContentLoaded` and `htmx:afterSwap` (guarded by target id
+  `scout-section`); `max: 10` and `/ 10` tooltip
+- Regression: all 5d patch behaviours still hold (4 categories rendered,
+  Wyscout `compareRadar` canvas still present, hx-get/hx-target/
+  hx-push-url all on the toggle anchors)
+
+## v0.5.0d — Phase 5d: Scout dimension on comparison page (2026-05-09)
+
+The session that finally puts scout judgment alongside Wyscout numbers
+on the comparison view. Pure read-side aggregation — no schema changes.
+Project status ~91%.
+
+### 5d patch (landed in the same commit)
+Three issues surfaced during browser spot-check; all fixed before commit:
+
+1. **Match label visible in Latest-mode header** —
+   `get_player_evaluation_aggregate(mode='latest')` SELECT extended with
+   `LEFT JOIN matches`. Helper now emits `match_label` (e.g. "Khalidiya
+   vs Manama" or "Freestanding (no match linked)") and `match_date`.
+   Averaged mode emits both as None (multiple matches; not meaningful).
+   Header card renders `· {match_label}` after `· {date}` in Latest mode.
+
+2. **HTMX swap for Latest/Averaged toggle** — new partial-only route
+   `GET /players/compare/scout-section`. Toggle anchors gain `hx-get +
+   hx-target="#scout-section" + hx-swap="outerHTML" + hx-push-url`
+   (plain `href` retained as progressive-enhancement fallback). The
+   `<section id="scout-section">` wrapper now lives inside
+   `_compare_scout_section.html`, so the same template renders in both
+   the full-page and partial contexts. Browser back-button restores
+   prior mode (URL is pushed via `hx-push-url`).
+   Enrichment logic extracted into `_enrich_for_scout_section()` helper
+   in `app/players/__init__.py` so the route + partial route share it.
+
+3. **Drilldown rendered only the first category** — diagnosed via direct
+   helper call (route + helpers were producing 49 criteria correctly).
+   Root cause was Jinja-side: the `{% set _ = grouped.update(...) %}`
+   and `{% set _ = cat_order.append(...) %}` pattern in the original
+   `_compare_scout_drilldown.html` silently failed to mutate across
+   loop iterations past the first. Fixed by moving grouping into Python
+   via new `group_criteria_by_category()` helper (mirror of
+   `group_scores_by_category` from 5c-2.1). Template now consumes a
+   pre-grouped list. All 4 categories (Tech/Tact/Phys/Ment) render
+   correctly with criteria union AM ∪ DM = 49 rows.
+
+   Spec hypothesised the bug was in `compare_players()` not propagating
+   `position_group_id` — direct helper inspection ruled that out before
+   any code changes. Documented in CHANGELOG so future maintainers know
+   what to check first if a similar Jinja-mutate symptom appears.
+
+   **Follow-up UX touch (same commit):** the per-category sub-collapses
+   now render with `<details open>` so the data is visible immediately
+   when the scout expands the outer "Detailed criteria comparison". The
+   prior closed-by-default sub-collapses showed only category headers
+   on first expand — looked empty until the user clicked a second time
+   into each category. Confirmed via live HTML check: 4/4 categories
+   now open by default in both the full-page route and the HTMX partial.
+
+### 29/29 patch E2E PASS
+
+### Helpers (`app/evaluations/helpers.py`)
+- `compute_category_averages(scores)` — `{category_code: avg}` over the
+  rated entries; N/A and `score IS NULL` excluded; empty categories
+  omitted.
+- `get_evaluation_count_active(player_id)` — submitted+locked, non-deleted.
+- `get_player_evaluation_aggregate(player_id, mode)` — the workhorse:
+  - `mode='latest'`  → most-recent qualifying eval with full scores
+  - `mode='averaged'` → averages each criterion across all qualifying
+    evals (rated only); NT-readiness + recommendation resolved via
+    most-frequent-with-recency-tiebreak; per-criterion `eval_count`
+    annotation tells the UI how many evals fed each averaged value
+- `_fetch_eval_scores_with_categories()` — internal SQL helper joining
+  `evaluation_scores` + `criteria` + `criteria_categories`
+- `CATEGORY_LABEL_EN` dict (UPPERCASE keys to match `criteria_categories.code`)
+
+All four respect the **Phase 5c-3 soft-delete invariant**:
+`WHERE deleted_at IS NULL` everywhere. Locked evaluations are INCLUDED
+(locked is workflow protection, not data hiding).
+
+### Route (`app/players/__init__.py:compare_view`)
+- Reads `?scout_mode=latest|averaged` (default `latest`); invalid →
+  `latest` silently
+- Calls helpers per player; sets `p['eval_count']` and `p['scout_data']`
+- Computes the criteria union across selected players' position groups
+  via the existing `get_form_criteria(position_group_id)` helper
+- Threads `scout_mode`, `all_criteria`, `any_player_has_scout_data` to
+  the template
+
+### Wyscout aggregator (`app/wyscout/aggregations.py:compare_players`)
+- `position_group_id` now included in the per-player dict (the route
+  uses it to resolve criteria union for the drill-down)
+
+### Templates
+- `compare_view.html` — new section after the Wyscout radar with
+  Latest/Averaged toggle (uses `urlencode_with` to preserve other args)
+- `_compare_scout_section.html` — NEW. Per-player headline cards:
+  category averages (4 fixed rows: TECH/TACT/PHYS/MENT, missing → "—"),
+  NT-readiness + recommendation badges (EN labels + Arabic on hover),
+  truncated summary in latest mode. Empty-state placeholder per column
+  for players with no evals.
+- `_compare_scout_drilldown.html` — NEW. Per-criterion table grouped by
+  category (native `<details>` per category). One column per player.
+  Cell semantics:
+  - rated → numeric value (with `(N)` count in averaged mode)
+  - is_NA → "N/A" badge
+  - absent (cross-position non-applicable OR untouched) → "—"
+
+### Jinja globals
+- `CATEGORY_LABEL_EN` registered
+- `urlencode_with(key, value)` registered — preserves other query args
+  when building the toggle links
+
+### Verified end-to-end
+**26 / 26 synthetic E2E checks PASS** ([migrations/_e2e_5d.py](migrations/_e2e_5d.py)):
+
+- Helpers: Arthur (2 evals) latest vs averaged differ on TECH (5.0 vs 7.5);
+  Bouhra (2 evals from 2 different evaluators) averages compute correctly
+- HTTP: Latest mode renders evaluator names, category avgs, badges
+- HTTP: Averaged mode renders "N evaluations averaged" label + averaged values
+- HTTP: Toggle highlights the active mode visually (background swap)
+- HTTP: At least one of Arthur's category averages differs between modes
+  (proves the aggregation isn't a no-op)
+- Drill-down: AM-only criterion (`tech_set_pieces_attacking`) and
+  DM-only criterion (`tact_long_ball_cover`) both appear in the union
+- Drill-down: "—" cells appear for cross-position non-applicable criteria
+  (regression on the criteria-union semantics)
+- No-evals branch: ephemeral active player rendered with "No evaluations
+  yet" placeholder
+- Soft-delete invariant: deleting Arthur's latest eval makes the latest
+  helper return the next-most-recent; averaged mode now averages 1 fewer
+  eval; restore returns to original state
+- Regression: Phase 4.1 Wyscout comparison heading + radar canvas + career
+  stats table all still present
+- Regression: Phase 4.1 GK-vs-outfield rule still applied (skip if no GK
+  in DB)
+
+### Deferred (per spec's deferral path)
+- **Scout-vs-Wyscout dual radar**: marked nice-to-have in the spec with
+  explicit deferral path. Category-average cards in the section convey
+  the same information textually, and adding a second Chart.js radar
+  would have spilled the session beyond its 5-8 message target.
+  Recommend bundling into Phase 5e (NT readiness divergence flag) or
+  picking up as a tiny standalone follow-up if a real scout asks for it.
+
+### Known notes
+- `urlencode_with` lives in `app/__init__.py` since the URL helper
+  doesn't fit any of the existing helpers modules cleanly
+- The averaged mode preserves a per-criterion `eval_count` annotation;
+  the drill-down template renders it as `(N)` next to each averaged
+  value so a scout can tell whether `7.5 (1)` is one rating or
+  `7.5 (3)` is three convergent ratings
+
+## v0.5.0c3 — Phase 5c-3: UI/UX polish (2026-05-09)
+
+### 5c-3 follow-up — new-player workflow parity
+The 5c-3 spec only listed `players/edit.html` for the new pickers and
+admin block; `players/new.html` was overlooked, leaving the create form
+stuck on the old plain-text nationality + current_club inputs and
+missing the eligibility/residency fieldset entirely. Fixed:
+
+- `app/templates/players/new.html` — same nationality dropdown
+  (309 entries, Bahrain pinned first), same club picker w/ Premier +
+  First Division optgroups + "Other (free text)" escape, same admin-only
+  NT-eligibility/residency fieldset (mirrors edit.html exactly)
+- `app/players/__init__.py:new_player()` — POST handler now reads
+  `nationality_code` (validates against ISO list), `club_id` (with
+  "other" → free-text fallback), and the admin-only block; INSERT
+  branched on `is_admin_td` so scout-submitted eligibility fields are
+  silently dropped (defense-in-depth on top of template hiding)
+- `migrations/_e2e_5c3_newplayer.py` — 42/42 PASS verifying:
+  - GET form has all the new structured fields
+  - admin POST persists every field through to DB
+  - new player's profile renders eligibility card + flag + bio counts
+  - scout POST silently drops admin-only fields (4-case verification:
+    nationality_status / bahrain_residency_start_date /
+    eligible_from_date / eligibility_notes_admin all NULL)
+
+
+Six items + the soft-delete invariant. ~88% project status.
+
+### Schema changes
+- New `clubs` table: 24 Bahraini clubs seeded (12 Premier + 12 First
+  Division), with `division` CHECK enum + UNIQUE (name, division)
+- `players.nationality_code` (CHAR(3), nullable) — ISO 3166-1 alpha-3
+- `players.club_id` (FK to `clubs(id)` ON DELETE SET NULL)
+- `evaluations.deleted_at` + `deleted_by` (FK users SET NULL) +
+  `deleted_reason` (TEXT)
+- `evaluations_soft_delete_consistency` CHECK enforces all-three-or-none
+  with min 10-char reason
+
+### Spec extension — backfill SQL
+The spec's three fuzzy-match patterns wouldn't have matched the cases
+the spec writer expected (Arthur's "Muharraq Club" / "Al-Muharraq",
+Bouhra's "Khalidiya" / "Al-Khalidiya", Sayed's "Riffa" / "Al-Riffa").
+Added a fourth REGEXP_REPLACE pattern that strips `^Al-` from clubs.name
+AND ` Club$` from current_club, then case-insensitive compares. All 3
+existing players linked correctly.
+
+### Soft-delete invariant
+Every existing read query in `app/evaluations/helpers.py` now filters
+`WHERE deleted_at IS NULL`. Each helper has a docstring noting this.
+Functions touched: `get_or_create_draft`, `get_evaluation`,
+`submit_draft`, `lock_evaluation`, `unlock_evaluation`,
+`admin_edit_evaluation`, `get_player_evaluations`, `nt_readiness_summary`.
+The `list_deleted_evaluations` helper (admin recovery) is the documented
+exception that explicitly inverts the filter.
+
+### App
+- `app/players/nationalities.py` — NEW. 249 nationality entries +
+  alpha-3 → alpha-2 mapping + `flag_emoji()`. Generated once via
+  `pycountry` (build-time only); pycountry uninstalled after generation
+  so no runtime dependency.
+- `app/players/clubs.py` — NEW. `get_clubs_grouped()`, `get_club_label()`.
+- `app/players/__init__.py` — `_search_players` accepts `nat` + `club`
+  filters; edit handler reads `nationality_code`/`club_id`/`current_club_other`
+  with "other" escape; profile route fetches `bio_counts`.
+- `app/evaluations/helpers.py` — `soft_delete_evaluation()`,
+  `restore_evaluation()`, `list_deleted_evaluations()`,
+  `get_player_bio_counts()` added.
+- `app/evaluations/__init__.py` — `POST /evaluations/<id>/delete`
+  (`@scout_or_above`; helper enforces scout=own-draft, admin=any non-locked),
+  `POST /evaluations/<id>/restore` (`@admin_or_td_required`). Both
+  audit-logged.
+- `app/admin/__init__.py` — `GET /admin/deleted-evaluations`
+  (`@admin_required`); pure recovery view.
+
+### Templates
+- `players/edit.html` — nationality dropdown (211+ options, Bahrain first);
+  club dropdown with Premier/First optgroups + "Other (free text)" escape
+  hatch (Alpine `showOther` toggles a text input)
+- `players/profile.html` — bio counts strip ("📊 N matches · 📝 N evaluations")
+  with deleted_at filter on the evaluation count
+- `players/_grid.html` — flag emoji + ISO code per card
+  (e.g. "🇧🇷 BRA")
+- `players/list.html` — nationality + club filter dropdowns added to the
+  existing HTMX live-update row (q + pos + elig + nat + club)
+- `evaluations/_history_card.html` — Delete button (role-gated; scout
+  own-drafts only; admin any non-locked); includes the new modal
+- `evaluations/_delete_modal.html` — NEW. Reason textarea
+  (`minlength="10"`, required) with Cancel + Delete buttons
+- `admin/deleted_evaluations.html` — NEW. Recovery table with player +
+  match + evaluator + deleter + reason + Restore button
+
+### CSS
+- `app/static/css/style.css` — date / number / time / datetime-local
+  inputs themed for the dark UI; calendar-picker indicators inverted
+  via `filter: invert(1) opacity(0.6)`; spin buttons themed similarly
+
+### Verified end-to-end
+**43 / 43 synthetic E2E checks PASS** + 2 lifecycle FK invariant tests:
+
+- Item 1: 309 nationality options rendered, Bahrain first
+- Item 2: Premier+First optgroups present, "Other" path, all 24 clubs
+- Item 3: CSS theming served by Flask, includes calendar-picker filter
+- Item 4: 6 permission/state combinations
+  - scout deletes own draft (→ deleted_at set, deleted_by=scout) ✓
+  - scout cannot delete submitted (→ rejected) ✓
+  - admin deletes submitted ✓
+  - reason < 10 chars rejected ✓
+  - locked cannot be deleted ✓
+  - admin recovery page accessible to admin (200), 403 to scout ✓
+  - restore clears all 3 deleted_* columns atomically ✓
+- Item 5: bio counts honour deleted_at filter (rendered count drops
+  by 1 after a delete; matches DB count exactly)
+- Item 6: 🇧🇷 flag emoji + BRA code on Arthur's card
+- List filters: nat=BRA isolates Arthur; club=Al-Muharraq isolates
+  Arthur; club=other returns no players (all 3 backfilled)
+
+### FK lifecycle invariants (memory rule)
+1. `clubs` delete → `players.club_id` set NULL, player survives. ✓
+2. `users` delete when user has soft-delete records → **rejected** by
+   the all-three-or-none CHECK constraint (FK ON DELETE SET NULL would
+   produce half-deleted state). This emergent invariant preserves
+   accountability — you can't hard-delete a user who deleted any
+   evaluation without first restoring all of their deletions OR
+   re-attributing them.
+
+### Known notes
+- `nationality` legacy free-text column on players is preserved but no
+  longer read on edit; `nationality_code` is now the source of truth
+- `current_club` is kept as a denormalised cache from `clubs.name` so
+  existing code that reads `player.current_club` keeps working without
+  joins (templates, downstream queries)
+- Backfill resolved all 3 existing players to clubs successfully:
+  Sayed → Al-Riffa, Arthur → Al-Muharraq, Bouhra → Al-Khalidiya
+- E2E temporarily reset `scout@bfa.bh` password to
+  `phase5c3-temp-reset-2026-05-09`; admin should rotate via UI
+- pycountry was a build-time only dependency; no runtime import in
+  the app
+
+## v0.5.0c2.1 — Phase 5c-2.1 patch (2026-05-09)
+
+Four browser-spotted issues from 5c-2. No schema changes — pure
+application-layer fixes.
+
+### Item 1 — Eligibility card moved up
+- `app/templates/players/profile.html` — eligibility card now renders
+  immediately after the player header strip, BEFORE the Wyscout
+  dashboard. Most committee-relevant info is the first thing visible
+  after identifying who the player is.
+
+### Item 2 — `compute_eligibility_status` priority order fix
+The 5c-2 implementation returned "Status unknown" whenever
+`eligible_from_date` was NULL, ignoring `nationality_status` entirely.
+Confusing: "?  Status unknown" with "Status: Foreign Residency" right
+underneath.
+
+`app/players/eligibility.py` — replaced with 6-priority logic:
+1. `not_eligible` → ❌ Not eligible
+2. `bahraini` / `foreign_ancestry` → ✅ Eligible now (birthright; date irrelevant)
+3. `eligible_from_date` set → ✅/⏳ based on date (overrides residency-derived)
+4. `foreign_residency` + `bahrain_residency_start_date` → derived suggested
+   eligibility (Article 5; admin to confirm)
+5. `foreign_residency` without residency_start → ⏳ Pending — residency start not set
+6. `foreign_other` without date → ? Foreign-eligible (other route)
+7. otherwise → ? Status unknown
+
+Also handles `bahrain_residency_start_date` arriving as ISO string
+(form-data path) by parsing inside the function.
+
+### Template cleanup
+- `app/templates/evaluations/_eligibility_card.html` — removed redundant
+  "Status:" line (now duplicates the icon-line verdict). Replaced with
+  smaller "Route:" line that's still useful — shows the EN+AR route
+  label without claiming a separate eligibility verdict.
+- New `NATIONALITY_ROUTE_LABEL_EN` dict in
+  `app/evaluations/helpers.py` — short labels for the Route line
+  ("Foreign — residency" instead of "Foreign Eligible Residency").
+- Registered as Jinja global in `app/__init__.py`.
+
+### Item 3 — Section-grouped expanded scores
+`app/evaluations/helpers.py` — new `group_scores_by_category()` that
+takes the flat scores list returned by `get_player_evaluations` and
+groups by category. Each group has:
+- per-category average (rated only; N/A excluded from avg)
+- rated count + N/A count
+- empty categories omitted entirely
+
+`get_player_evaluations` SQL extended to JOIN `category_name_ar`
+(spec wanted EN+AR pairs in the section header).
+
+`app/templates/evaluations/_history_card.html` — flat scores table
+replaced with native `<details>` collapse per category, summary line
+per section showing `<avg> · X rated, Y N/A`.
+
+`group_scores_by_category` registered as Jinja global.
+
+### Item 4 — Players list eligibility column + filter
+The list uses an HTMX-driven card grid (not a table — adapted Item 4's
+intent to fit). Two changes:
+
+`app/templates/players/_grid.html` — eligibility line per card showing
+icon + label + condensed date suffix (parses out the `From `/`Suggested `
+prefix to save space).
+
+`app/templates/players/list.html` — third filter dropdown (`elig`)
+added to the existing `q` + `pos` HTMX live-filter row. 5 options:
+all / eligible_now / pending / not_eligible / unknown.
+
+`app/players/__init__.py`:
+- `_search_players(q, pos_id, elig=None)` — accepts the new filter
+- `_ELIG_FILTER_CLAUSES` constant maps each value to a SQL `WHERE`
+  fragment using `INTERVAL '5 years'` for the residency-derived path
+- SELECT extended to pull `nationality_status`,
+  `eligible_from_date`, `bahrain_residency_start_date` so the card
+  template can call `compute_eligibility_status(p)` without a second
+  query
+- `list_players` route reads `?elig=...` from query string and threads
+  it through the existing HTMX-include partial path
+
+### Verified end-to-end
+Synthetic E2E (48 / 48 PASS) covering:
+- Item 1 — eligibility card position (before Wyscout dashboard, exactly once)
+- Item 2 — all 7 priority cases A–G + 3 edge cases (residency past-due,
+  explicit-date-overrides-residency, foreign_other) via profile rendering
+- Item 2 cleanup — no "Status:" line, "Route:" line shown when
+  applicable / hidden when status is null
+- Item 3 — sub-section `<details>` blocks render with avg + counts
+- Item 4 — eligibility filter dropdown present, filter SQL gives
+  correct subset for each of 4 options across 7 ephemeral test players
+
+### Files modified / created
+- `app/players/eligibility.py` (M) — `compute_eligibility_status` rewritten
+- `app/evaluations/helpers.py` (M) — `group_scores_by_category` added,
+  `NATIONALITY_ROUTE_LABEL_EN` added, `get_player_evaluations` JOIN
+  extended for `category_name_ar`
+- `app/__init__.py` (M) — 2 new Jinja globals registered
+- `app/players/__init__.py` (M) — `_search_players` accepts `elig`;
+  `_ELIG_FILTER_CLAUSES` constant; route plumbed
+- `app/templates/players/profile.html` (M) — eligibility card moved up
+- `app/templates/players/list.html` (M) — eligibility filter dropdown
+- `app/templates/players/_grid.html` (M) — per-card eligibility line
+- `app/templates/evaluations/_eligibility_card.html` (M) — Route line
+  replaces Status line; residency-from line simplified
+- `app/templates/evaluations/_history_card.html` (M) — section-grouped
+  expand with `<details>` per category
+- `migrations/_e2e_5c2_1.py` (NEW) — 48-check synthetic E2E
+
+### Known notes
+- The `INTERVAL '5 years'` in the SQL filter clauses is hard-coded;
+  if `RESIDENCY_YEARS_REQUIRED` ever changes from 5, update both files.
+  Comment in `app/players/__init__.py` near `_ELIG_FILTER_CLAUSES`
+  flags this.
+- `_search_players` SELECT now pulls 3 extra columns per row;
+  negligible cost, kept inline rather than adding a second query
+  per request.
+
+## v0.5.0c2 — Phase 5c-2: Final form story (2026-05-09)
+
+The phase that closes the form story. Submitted evaluations finally appear
+on the player profile, lock/unlock workflow protects records, eligibility
+status is visible, mobile UX is polished, Arabic labels are baked in.
+Project status now ~85% — true MVP.
+
+### Schema changes
+- `players`: 2 new admin-set residency-tracking columns
+  - `bahrain_residency_start_date DATE`
+  - `bahrain_residency_notes TEXT`
+- `evaluations`: 3 new columns
+  - `locked_reason TEXT` — captured on unlock for audit trail
+  - `last_edited_by INTEGER REFERENCES users(id) ON DELETE SET NULL` —
+    populated on admin-edit; preserves original `evaluator_id`
+  - `last_edited_at TIMESTAMPTZ`
+- `evaluations_locked_by_fkey` recreated with `ON DELETE SET NULL`
+  (was default NO ACTION — would have blocked user deletion)
+- Two new FKs (`locked_by`, `last_edited_by`) verified to honor
+  `ON DELETE SET NULL` via lifecycle test (delete user → evaluation
+  survives, FK columns nulled, status preserved)
+
+### Spec corrections (vs the prompt as written)
+- `locked_at` and `locked_by` columns **already existed** in Phase 0
+  schema — migration skips re-adding them.
+- `status CHECK` already includes `'locked'` — migration skips the
+  no-op extension.
+- Migration only adds the 5 truly-new columns + tightens the existing
+  `locked_by` FK to ON DELETE SET NULL.
+
+### App
+- `app/players/eligibility.py` — new module:
+  - `RESIDENCY_YEARS_REQUIRED = 5` constant (FIFA Article 5 baseline)
+  - `compute_suggested_eligibility()` — start-date + 5y, with leap-year
+    edge case (Feb 29 + 5y → Feb 28 in non-leap year)
+  - `compute_eligibility_status()` — returns `{icon, label, note}` dict
+    for the 4 states (eligible / pending / not eligible / unknown)
+  - `count_orphan_scores()` + `delete_orphan_scores()` — for
+    position-change confirm flow
+- `app/evaluations/helpers.py` — extended:
+  - `get_player_evaluations()` — history-card data with joined evaluator
+    + last_edited_by + match info + per-eval scores list
+  - `nt_readiness_summary()` — last-N submitted/locked tally
+  - `lock_evaluation()`, `unlock_evaluation()`, `admin_edit_evaluation()`
+  - Arabic translation dicts (NT_LEVEL_LABEL_AR, RECOMMENDATION_LABEL_AR,
+    ELIGIBILITY_STATUS_LABEL_AR) + EN mirrors — baked verbatim from
+    Phase 5c-2 spec table; registered as Jinja globals
+- `app/evaluations/__init__.py` — three new routes:
+  - `POST /evaluations/<id>/lock` (`@admin_or_td_required`)
+  - `POST /evaluations/<id>/unlock` (`@admin_or_td_required`, requires
+    `reason` field with min 10 chars)
+  - `POST /evaluations/<id>/admin-edit` (`@admin_or_td_required`,
+    blocked when status='locked')
+  - All audit-logged with structured details
+- `app/players/__init__.py` — extended:
+  - `player_profile()` SELECT pulls new eligibility/residency columns
+  - `edit_player()` POST handles new residency fields; admin/TD-only
+  - Position-change orphan flow: detects criterion mismatch, re-renders
+    the form with confirm modal, accepts `orphan_decision=delete|keep`,
+    audit-logs the choice
+
+### Templates
+- `evaluations/_eligibility_card.html` — NEW: 4-state icon + label,
+  optional admin-status code, latest-3 NT-readiness vote tally,
+  Bahrain-residency note when applicable
+- `evaluations/_history_card.html` — NEW: scout name, NT level + recommendation
+  badges, summary snippet (200 chars), expand-toggle to full criteria
+  scores grid (N/A-aware), role-gated lock/unlock actions in the
+  expanded panel
+- `evaluations/_soft_warning_modal.html` — NEW: <5 ratings non-blocking
+  warning with "go back" / "submit anyway"
+- `evaluations/form.html` — sticky save bar pinned to viewport bottom
+  on `<768px`, soft-warning interception on submit, Arabic on the
+  Save Draft / Submit buttons; slider thumbs ≥32px desktop / ≥44px
+  mobile (iOS HIG) via `.bfa-range` CSS
+- `evaluations/_slider.html` — exposes `data-dirty` + `data-na`
+  attributes so the soft-warning JS can count rated sliders
+- `evaluations/_nt_readiness.html` — Arabic labels baked verbatim into
+  every radio option + section heading
+- `evaluations/view.html` — admin/TD lock/unlock buttons + unlock-reason
+  modal in status header; "edited by admin" badge; admin-edit affordance
+  on submitted (not locked) evaluations
+- `players/profile.html` — eligibility card + history cards replace
+  the "Coming in Phase 5c-2" placeholder
+- `players/edit.html` — Bahrain residency input + suggested-date UX
+  ("Suggested: YYYY-MM-DD ⓘ" with Article 5 caveat tooltip + "Use
+  suggestion" button); orphan-scores confirm modal
+
+### Verified end-to-end
+**55 / 55 synthetic E2E checks PASS** covering all 17 acceptance criteria.
+
+| # | Acceptance check | Result |
+|---|---|---|
+| 1 | Pre-flight gates pass | ✓ (with documented stale spec on rows-12/13) |
+| 2 | Migration AUDIT PASS, throwaway-namespace verify PASS | ✓ |
+| 3 | Profile shows eligibility card + history cards (no remnant) | ✓ |
+| 4 | Lock POST flips status, audit-logged | ✓ |
+| 5 | Unlock with valid reason flips back, audit-logged | ✓ |
+| 6 | Unlock with <10 char reason rejected | ✓ |
+| 7 | Admin edit preserves evaluator_id, sets last_edited_by | ✓ |
+| 8 | Admin edit blocked on locked evaluations | ✓ |
+| 9 | Eligibility card renders 4 states correctly | ✓ |
+| 10 | Latest-3 NT summary line renders | ✓ |
+| 11 | Residency input + suggested-date UX works | ✓ |
+| 12 | Position change with orphans → modal → delete OR keep | ✓ |
+| 13 | Soft warning <5 ratings → modal markup present | ✓ |
+| 14 | Mobile: sticky save bar markup + ≥44px slider thumbs CSS | ✓ |
+| 15 | All Arabic translations baked verbatim from spec table | ✓ |
+| 16 | Locked evaluations hide lock/unlock/edit from scout role | ✓ |
+| 17 | schema.sql declarative-only (no ALTERs added) | ✓ |
+
+Plus a lifecycle FK invariant test (rollback-wrapped): deleting a user
+who locked an evaluation correctly nulls `locked_by` AND `last_edited_by`
+without touching the evaluation row or its status.
+
+### Verification gaps requiring browser
+- Mobile rendering of sticky save bar at <768px (CSS media query)
+- Slider thumb visual size (CSS-rendered, not in DOM)
+- Modal click-through-and-back UX
+
+### Known notes
+- E2E test transiently reset `scout@bfa.bh` password to a temp value
+  (`phase5c2-temp-reset-2026-05-09`); admin should rotate via UI when
+  reviewing.
+- The Phase 6 placeholder ("Coming in Phase 6.") for the Player Passport
+  remains on the profile — that section ships in the next phase.
+
+## v0.5.0c1.1 — Phase 5c-1.1: Tri-state slider (2026-05-09)
+
+### Schema changes
+- `evaluation_scores`: tri-state semantics
+  - `score` is now NULLABLE (was NOT NULL)
+  - `is_not_applicable BOOLEAN NOT NULL DEFAULT FALSE` added
+  - `evaluation_scores_score_or_na` CHECK enforces (rated XOR N/A):
+    `(score IS NOT NULL AND is_not_applicable = FALSE) OR
+     (score IS NULL     AND is_not_applicable = TRUE)`
+- All 14 pre-existing rows backfilled cleanly via the DEFAULT clause
+  (every row was rated pre-migration, so default of FALSE is correct)
+
+### App
+- `app/templates/evaluations/_slider.html` — tri-state slider:
+  - Three Alpine state vars: `value`, `dirty`, `na`
+  - `reset()` method clears all three (✕ button calls it)
+  - `toggleNA()` enables N/A and clears any prior rating; click again
+    returns to fully untouched
+  - `:disabled="na"` on `<input type="range">` blocks drag while N/A
+  - Two `:name` toggles — score input only contributes to POST when
+    `dirty && !na`; hidden N/A input only when `na`
+  - Visual: opacity 60% when N/A, brand color when rated, muted dash
+    when untouched, ✕ visible only when `dirty && !na`
+- `app/evaluations/forms.py` — `parse_score_inputs` now returns
+  `{criterion_id: {'score', 'is_not_applicable'}}`. Two-pass scan: first
+  scan for `score_<id>` (rated), then `na_<id>` (N/A — overrides any
+  rated entry for the same criterion if both posted).
+- `app/evaluations/helpers.py` — DELETE-then-INSERT semantics in
+  `save_evaluation_scores`. Untouched-after-rated naturally removes the
+  row; no awkward "delete row if cleared" branching. `get_evaluation_scores`
+  now returns the dict-of-dicts shape for tri-state pre-fill.
+- `app/templates/evaluations/_section.html` — passes both `prefilled_value`
+  and `prefilled_na` to the slider include; section header text changed
+  from "X / Y rated" to "X / Y decided" (counts both rated and N/A).
+- `app/templates/evaluations/view.html` — renders N/A as a badge:
+  "N/A · غير متخصص" with muted styling; numeric scores render as before.
+- `app/templates/evaluations/form.html` — section count comment updated
+  for new dict-of-dicts shape.
+
+### Verified end-to-end
+Synthetic E2E (28/28 PASS) covered:
+1. Form HTML carries all 6 new tri-state attributes
+2. POST tri-state matrix: 4 rows from rated/rated/N/A/malformed
+3. DELETE-then-INSERT — untouched-after-rated removes the row
+4. DB CHECK rejects malformed direct inserts (both score+NA and NULL+!NA)
+5. Re-open pre-fills 2 dirty + 1 na correctly
+6. Submit transitions; view renders N/A badge with EN+AR text
+7. All 3 pre-migration evaluations still render 200
+
+Lifecycle invariants verified:
+- Backfill: 14 rows, all rated, 0 N/A, 0 invalid
+- CHECK enforcement: 4-case matrix (rated, N/A both accept; both
+  malformed states reject)
+
+### Verification gaps requiring browser
+The synthetic test cannot drive a real browser. The following slider UX
+details need an Ali eyes-on pass:
+- ✕ button visibility transitions on `dirty` flag (Alpine x-show)
+- N/A button highlight toggle
+- Slider visual greyout (opacity-60) when na=true
+- Drag actually disabled when na=true (HTML5 :disabled on range)
+- `reset()` returns slider to centered 5
+- `toggleNA()` clearing prior rating correctly
+
+### Known limitation (out of scope)
+If a scout marks a slider N/A, then a player's primary position is
+changed to one where that criterion no longer applies, the N/A row
+stays in `evaluation_scores` but doesn't appear on the form (the form
+only renders criteria mapped to the current position group). This is
+DB cruft, not a correctness bug. Bundle into 5c-2 cleanup or 5d.
+
+## v0.5.0c1 — Phase 5c-1: Evaluation form (2026-05-09)
+
+### Schema changes
+- `players`: 3 admin-set NT-eligibility columns (all nullable)
+  - `nationality_status` (CHECK enum: bahraini / foreign_ancestry /
+    foreign_residency / not_eligible / unknown)
+  - `eligible_from_date` (DATE)
+  - `eligibility_notes_admin` (TEXT)
+- `evaluations`: new `match_id` column (the spec said "promote existing"
+  but the column didn't actually exist on live — see PHASE_5C1_RESULT.md
+  for the protocol-driven correction). FK to `matches(id)` `ON DELETE SET
+  NULL` so deleting a match preserves the evaluation. New
+  `idx_evaluations_match_id` supporting index.
+
+### App
+- `app/evaluations/__init__.py` — full blueprint replacing Phase 0 stub:
+  - `GET/POST /players/<id>/evaluate` — form / save-draft / submit
+  - `GET/POST /evaluations/<id>` — view + update own draft
+  - `POST /evaluations/<id>/submit` — explicit submit endpoint
+  - `POST /matches/new-inline` — modal-fed match creation, returns JSON
+  - Blueprint registered at root (no `url_prefix`) since routes span
+    `/players/<id>/evaluate`, `/evaluations/<id>`, `/matches/new-inline`
+- `app/evaluations/helpers.py` — pure-DB layer:
+  - `get_form_criteria()`, `get_recent_matches()`,
+    `get_or_create_draft()`, `get_evaluation()`, `get_evaluation_scores()`,
+    `save_evaluation_scores()` (UPSERT, untouched stays unstored),
+    `update_evaluation_meta()`, `submit_draft()` (validates required fields),
+    `resolve_position_group_for_player()`
+- `app/evaluations/forms.py` — input parsing:
+  - `parse_score_inputs()` — extracts `score_<criterion_id>` keys, drops
+    out-of-range / non-numeric silently
+  - `parse_meta_fields()` — whitelisted radio values, safe int casting
+
+### Templates
+- `evaluations/form.html` — sticky save/submit bar, match picker, 4
+  slider sections (first expanded), NT readiness section, summary,
+  submit-confirm modal
+- `evaluations/_slider.html` — Alpine `dirty` flag toggles `name`
+  attribute so untouched sliders submit no data; pre-fills from saved
+  scores on draft reload
+- `evaluations/_section.html` — native `<details>` accordion, "X / Y rated"
+- `evaluations/_match_picker.html` — dropdown + inline-create modal
+  posting to `/matches/new-inline`, prepends new option to select
+- `evaluations/_nt_readiness.html` — 5 fields (level + recommendation
+  required, eligibility/notes/comparable optional), pre-fills from draft
+- `evaluations/_submit_modal.html` — confirm gate before submitting
+- `evaluations/view.html` — read-only render with status badge,
+  per-section "X / Y rated", NT readiness summary, free-text summary
+- `players/edit.html` — admin/TD-only fieldset for `nationality_status`,
+  `eligible_from_date`, `eligibility_notes_admin`
+- `players/profile.html` — "New Evaluation" button (scout role and above)
+
+### Verified end-to-end
+1. Pre-flight: 4/5 gates clean; gate 5 had expected pending state
+   documented and proceeded
+2. Migration applied: AUDIT PASS — 3 cols on players, match_id + FK +
+   index on evaluations
+3. Throwaway-namespace replay: 6 invariants confirmed (cols, FK with
+   ON DELETE SET NULL, indexes, CHECK enum values, Phase 5b preserved)
+4. **Synthetic E2E: 27 / 27 acceptance checks PASS**:
+   - GET form returns 200, 42 sliders for AM, 5 sections present
+   - Save draft writes evaluation + 5 scores, 37 untouched leave no rows
+   - Reopen pre-fills the 5 sliders + NT radios
+   - Submit transitions status → submitted, sets submitted_at
+   - Inline match modal POST creates manual match
+   - Eligibility fieldset visible to admin, hidden from scout
+5. **Lifecycle FK invariant**: deleting linked match nulls
+   `evaluations.match_id`, evaluation row + status preserved (rollback-
+   wrapped to leave live state intact)
+
+### Known notes
+- Spec said `evaluations.match_id` already existed; live table didn't
+  have it. Migration ADDs the column instead of altering it. Same end
+  state. Documented in `PHASE_5C1_RESULT.md`.
+- E2E test transiently reset `scout@bfa.bh` password to a temp value
+  (`phase5c1-temp-reset-2026-05-09`); admin should rotate via UI when
+  reviewing. Documented in `PHASE_5C1_RESULT.md`.
+
+## v0.5.0b — Phase 5b: matches table + Wyscout auto-link (2026-05-09)
+
+### Schema changes
+- New table `matches` (15 columns):
+  - identity: `match_date`, `home_team`, `away_team` with `UNIQUE`
+  - scores, competition, age_group (CHECK senior/u23/u20/u17),
+    match_type (CHECK league/cup/friendly/tournament/national_team),
+    bfa_team_side (home/away), notes
+  - provenance: `source` (CHECK wyscout/manual, defaults to `manual`),
+    `created_by` (FK users ON DELETE SET NULL), timestamps
+- 4 indexes on `matches`:
+  - `idx_matches_lookup` (date + LOWER(BTRIM(home/away))) — case-insensitive
+    auto-link
+  - `idx_matches_age_group`, `idx_matches_source`, `idx_matches_date`
+- `wyscout_match_stats` gains `match_id INTEGER REFERENCES matches(id)
+  ON DELETE SET NULL` + `idx_wyscout_match_id`. Nullable; `SET NULL`
+  preserves stat history if a match is ever deleted.
+
+### Data
+- Backfill linked all 34 existing `wyscout_match_stats` rows
+  (Arthur Rezende 18 + Saifaldeen Bouhra 16) to **33 unique matches**.
+  The 33 (not 34) is correct: Arthur and Bouhra played opposite teams in
+  one shared fixture (Muharraq vs Khalidiya, 2026-01-02), and case-
+  insensitive dedup correctly mapped both stat rows to one match row.
+- Audit gate inside the migration RAISEd on any drift; AUDIT PASS
+  printed before COMMIT.
+
+### Added
+- `migrations/phase_5b_matches.sql` — imperative migration with
+  pre-flight check (stats == 34, matches table absent), transaction-
+  wrapped DDL + backfill, audit gate (matches == 33, linked == 34,
+  unlinked == 0), eyeball SELECT.
+- `migrations/_generate_phase_5b.py` — generator with thresholds in
+  one place; mirrors Phase 5a artifact split.
+- `migrations/_dryrun_5b.py` — runs the migration with rollback wrapper.
+- `migrations/_apply_5b.py` — runs it for real, COMMITs only on audit pass.
+- `migrations/_verify_throwaway_5b.py` — applies updated `schema.sql`
+  to an isolated namespace and checks: matches columns, indexes,
+  match_id presence, FK ON DELETE SET NULL semantics. Confirms
+  declarative schema and live-DB state converge.
+- `app/wyscout/ingest.py:_resolve_match_id()` — case-insensitive lookup
+  + INSERT ... ON CONFLICT DO UPDATE, called inside the existing
+  ingest transaction so matches and stats commit atomically.
+- `app/wyscout/__init__.py` — `GET /wyscout/matches` (read-only,
+  `@admin_or_td_required`); returns one row per match with
+  linked_stats count via `LEFT JOIN COUNT(wyscout_match_stats)`.
+- `app/templates/wyscout/matches.html` — table view with source badge
+  (BFA gold for `wyscout`, blue for `manual`) and linked-stats count
+  (green when > 0).
+
+### Changed
+- `schema.sql`:
+  - New section "6. MATCHES (Phase 5b)" inserted before WYSCOUT INTEGRATION
+    so `wyscout_match_stats.match_id` REFERENCES resolves at fresh-install
+    time
+  - `wyscout_match_stats` CREATE TABLE updated in place to include the
+    `match_id` column declaration (no ALTER statements added)
+  - Section numbering bumped: WYSCOUT INTEGRATION → 7, AI ARTIFACTS → 8
+- `app/wyscout/ingest.py` — UPSERT vals dict gains `match_id`, populated
+  by `_resolve_match_id()` per parsed row before the stat-row UPSERT.
+  DO UPDATE clause auto-includes `match_id = EXCLUDED.match_id` because
+  it's not part of the conflict key.
+
+### Verified end-to-end
+1. Pre-flight: 34 stats, no matches table → passed
+2. Migration applied: AUDIT PASS — 33 / 34 / 0
+3. Throwaway-namespace replay: schema.sql converges (15 cols on matches,
+   FK with ON DELETE SET NULL, all 4 indexes present)
+4. Re-upload Arthur's xlsx via real `ingest_wyscout()`:
+   `inserted=0, updated=18`, **0 new matches, 0 NULL match_ids,
+   0 drifted match_ids** — re-uploads idempotent on matches as well as
+   on stats
+5. Shared-fixture invariant — `2026-01-02 Muharraq vs Khalidiya`:
+   exactly 1 matches row, 2 linked stat rows (Arthur + Bouhra)
+6. ON DELETE SET NULL invariant (in rollback wrapper): deleting the
+   shared fixture nulls both stat rows' match_id; the stat rows
+   themselves survive intact
+
+### Known limitation
+The UNIQUE constraint is on raw `(match_date, home_team, away_team)`,
+not on the lowered/trimmed values. The auto-link path uses case-
+insensitive lookup, so it won't *create* duplicates, but if a manual
+match is created with whitespace divergence ("Muharraq " vs "Muharraq")
+both rows could persist. Acceptable for v1.
+
+## v0.5.0a — Phase 5a: criteria reseed + NT readiness columns (2026-05-09)
+
+### Schema changes
+- `evaluations`: 4 new columns for the National-Team Readiness section
+  - `nt_readiness_level VARCHAR(16)` — CHECK in (senior, u23, u20, u17, not_ready)
+  - `eligibility_status VARCHAR(32)` — CHECK in (bahraini, foreign_residency,
+    foreign_ancestry, foreign_other, not_eligible, unknown)
+  - `eligibility_notes TEXT`
+  - `comparable_player VARCHAR(255)`
+- `evaluations_recommendation_check` rewritten:
+  - dropped value: `not_ready` (now lives in `nt_readiness_level`)
+  - added value: `not_at_level`
+
+### Data
+- `criteria` reseeded from the v2-LOCKED Phase 5 taxonomy: **55 items**
+  (Technical 20, Tactical 20, Physical 9, Mentality 6 — trimmed from 12).
+  Codes use category prefixes (`tech_*`/`tact_*`/`phys_*`/`ment_*`).
+- `position_group_criteria` reseeded: **303 mappings**.
+  Per-position form sizes:
+  GK 24, CB 42, FB 42, DM 40, CM 37, AM 42, W 38, ST 38.
+
+### Added
+- `migrations/phase_5a_reseed.sql` — imperative migration with pre-flight,
+  transaction-wrapped reseed + ALTER, and a DO-block audit gate that
+  RAISEs if per-position counts don't match the v2 spec (forces ROLLBACK).
+- `migrations/_generate_phase_5a.py` — taxonomy → SQL generator; asserts
+  per-position counts vs the spec BEFORE emitting any SQL.
+- `migrations/_dryrun.py` — runs the migration in a rollback wrapper.
+- `migrations/_apply.py` — runs it for real, COMMITs only on audit pass.
+- `migrations/_verify_throwaway_db.py` — applies schema.sql to an isolated
+  schema and audits, proving the declarative source-of-truth and the
+  imperative migration converge.
+
+### Changed
+- `schema.sql`:
+  - `evaluations` CREATE TABLE definition updated in place to include the
+    4 new NT-readiness columns and the new recommendation CHECK values
+    (declarative-only, no ALTER statements added)
+  - Phase 0 starter criteria seed (39 items) replaced wholesale with the
+    Phase 5a taxonomy (55 items)
+  - position_group_criteria mapping block replaced to match
+  - `v_position_group_form_counts` doc comment updated to reflect the
+    new per-position sizes (GK 24 .. CB/FB/AM 42)
+
+### Notes
+- Pre-flight verified: `evaluation_scores` was empty and no evaluation
+  used the legacy `recommendation = 'not_ready'`, so the reseed didn't
+  destroy any user data.
+- `Arabic strings` are placeholders — final translations deferred to
+  the admin UI in Phase 8.
+
+## v0.4.1 — Phase 4.1: Season aggregations + player comparison (2026-05-09)
+
+### Added
+- `app/wyscout/helpers.py` — `season_label_for_date()`: Aug 1 → May 31 football
+  season helper, returns `'YYYY/YY'` (accepts `date`, `datetime`, ISO string, or None)
+- `app/wyscout/aggregations.py` — three new functions:
+  - `get_player_seasons()` — per-season SUMs grouped by `EXTRACT(MONTH/YEAR ...)`
+    with NULL-safe pass / duel / aerial / defensive percentages and `goals_plus_assists`
+  - `get_player_radar_seasons(player_id, n_seasons=2)` — last N seasons normalized
+    via existing `RADAR_THRESHOLDS` / `normalize_radar_axis`; returns
+    `[{season_label, season_start_year, matches, total_minutes, scores}]`
+  - `compare_players(player_ids)` + `validate_comparison(player_ids)` —
+    side-by-side data assembly for 2-3 players with `best_per_metric` highlighting;
+    GK + outfield mix is the only cross-position restriction
+- `app/players/__init__.py` — three new routes (all `@any_authenticated`):
+  - `GET /players/compare` — picker form
+  - `GET /players/compare/search` — lightweight HTMX search partial
+  - `GET /players/compare/view` — accepts `?ids=1&ids=2` *or* `?ids=1,2,3`,
+    flashes ValueError messages and redirects to picker on validation failures
+- `app/templates/players/compare.html` — Alpine-driven 3-slot picker with
+  HTMX search and live "selected count" feedback; submit disabled until ≥2 picked
+- `app/templates/players/_compare_search.html` — HTMX result rows
+- `app/templates/players/compare_view.html` — bio header row, career stats grid
+  with per-metric max highlighted in BFA green, and an overlapping radar
+- `app/static/js/compare.js` — Chart.js radar overlay (3-color palette, BFA red /
+  gold / blue) reading from `<canvas data-compare='...'>`
+- `app/templates/base.html` — `Compare` link in both desktop nav and the
+  mobile dropdown (visible to all authenticated users)
+- 3 new Jinja globals: `get_player_seasons`, `get_player_radar_seasons`,
+  `season_label_for_date`
+
+### Changed
+- `app/templates/players/profile.html` — Career-by-Season table appended to the
+  Wyscout dashboard (11-col table: season / Mt / Min / G / A / G+A / xG /
+  Ps% / Duel% / Y / R); radar canvas now reads `data-radar-seasons` JSON,
+  removed the old `window.BFA.radar` global injection
+- `app/static/js/player_dashboard.js` — `initRadar()` rewritten to consume
+  `data-radar-seasons`: current season solid (BFA red), prior season dashed
+  (BFA gold); legend appears only when ≥2 datasets
+
+### Notes
+- No schema changes — `wyscout_match_stats` already had everything needed
+- Comparison percentages never divide by zero — `_compare_summary()` uses
+  Python guards on the denominator and stores `None` when no data
+
+## v0.3.0 — Phase 4: Wyscout import + player dashboard (2026-05-08)
+
+### Added
+- `app/wyscout/parser.py` — `parse_wyscout_xlsx()` with `WYSCOUT_COLUMN_MAP` (50+ header aliases),
+  match label regex, date/score/is_home extraction, per-row raw_row JSONB preservation
+- `app/wyscout/helpers.py` — `RADAR_AXES`, `RADAR_THRESHOLDS`, `normalize_radar_axis()` for 6-axis radar
+- `app/wyscout/ingest.py` — `ingest_wyscout()`: full transaction, UPSERT
+  `ON CONFLICT (player_id, match_label, match_date) DO UPDATE`, xmax=0 insert-vs-update detection,
+  audit_log entry, failed-import recovery
+- `app/wyscout/aggregations.py` — `get_player_summary()`, `get_player_match_history()`,
+  `get_player_radar_scores()`, `get_player_trends()` — all direct pool queries
+- `app/wyscout/__init__.py` — full blueprint (replaces Phase 0 stub):
+  `GET/POST /wyscout/upload/<id>`, `GET /wyscout/result/<id>`,
+  `GET /wyscout/imports/<id>`, `POST /wyscout/delete/<id>`, `GET /wyscout/trends/<id>` (JSON API)
+- `app/templates/wyscout/upload.html`, `result.html`, `imports.html`
+- `app/templates/players/profile.html` — Wyscout placeholder replaced with live dashboard:
+  8 summary KPI cards, 6-axis radar, 3 trend line charts (G+A, pass accuracy, duel win%),
+  10-row recent match table
+- `app/static/js/player_dashboard.js` — Chart.js 4 radar + line chart init with BFA colour tokens
+- Chart.js 4.4.2 CDN added to `base.html`
+- `age()` Jinja global registered (players.helpers)
+- 3 new Jinja globals: `get_wyscout_summary`, `get_player_match_history`, `get_player_radar_scores`
+
+### Changed
+- `requirements.txt` — added `pandas>=2.0`, `openpyxl>=3.1`
+- `app/players/helpers.py` — added `age()` utility
+
+## v0.2.0 — Phase 3: Players module (2026-05-08)
+
+### Added
+- `app/players/__init__.py` — full blueprint replacing Phase 0 stub:
+  - `GET /players/` — list with HTMX live search (300ms debounce) + position filter
+  - `GET/POST /players/new` — create player + Pillow photo upload
+  - `GET /players/<id>` — full profile with Phase 4/5/6 placeholder sections
+  - `GET/POST /players/<id>/edit` — edit player + optional photo replace
+  - `POST /players/<id>/deactivate` — soft-delete (is_active = FALSE only)
+- `app/players/helpers.py` — `get_player_photo()`, `get_player_pos()` as Jinja globals
+- `app/players/photos.py` — `save_player_photo()` center-crops to 400x400 JPEG via Pillow
+- `app/static/photos/placeholder.svg` — BFA-branded player silhouette fallback
+- Templates: `players/list.html`, `players/_grid.html` (HTMX partial), `players/new.html`,
+  `players/edit.html`, `players/profile.html`
+- `app/static/css/style.css` — `.player-grid`, `.player-card`, `.photo-thumb`,
+  `.pos-badge` with per-position-group colour tokens
+
+### Changed
+- `requirements.txt` — added `Pillow==10.3.0`
+- `app/__init__.py` — registered `get_player_photo` and `get_player_pos` as Jinja globals
+- `.gitignore` — added `app/static/photos/*.jpg`
+- `PROJECT.md` — Phase 3 marked complete, Phase 4 queued
+
+---
+
+## v0.1.1 — Phase 1 fix (2026-05-08)
+
+### Fixed
+- `app/templates/index.html` line 24: `url_for('auth.index')` -> `url_for('auth.login')`
+  (auth blueprint has no `index` route; was causing BuildError on landing page)
+
+---
+
+## v0.1.0 — Phase 1: Auth & RBAC (2026-05-08)
+
+### Added
+- `app/auth/models.py` — `User(UserMixin)` with `get_by_id`, `get_by_email`, `has_role`; uses pool directly for user-loader compat outside request context
+- `app/auth/decorators.py` — `role_required(*roles)` + convenience bundles: `admin_required`, `admin_or_td_required`, `scout_or_above`, `any_authenticated`
+- `app/auth/audit.py` — `log_audit()` writing to `audit_log` table; never raises
+- `app/auth/__init__.py` — full login/logout/profile/change-password routes; generic error messages; PBKDF2:sha256:600000
+- `app/admin/__init__.py` + `app/admin/users.py` — admin user CRUD: list, new, edit, reset-password, deactivate; `is_last_active_admin()` guard on all destructive actions
+- `app/__init__.py` — Flask-Login + Flask-WTF CSRFProtect wired; user_loader; admin blueprint registered; first-boot admin seed at startup
+- `app/db.py` — `seed_initial_admin()` one-shot seeder from env vars
+- Templates: `auth/login.html`, `auth/profile.html`, `admin/users/list.html`, `admin/users/new.html`, `admin/users/edit.html`
+- `app/templates/base.html` — top nav now shows user full name, role badge, admin Users link (admin only), Sign out form
+- `app/static/css/style.css` — role badge classes + dark-mode form input base styles
+
+### Changed
+- All 7 remaining blueprint stubs now have `@login_required` on their stub index route
+- `requirements.txt` — added `Flask-WTF==1.2.1`, `email-validator==2.1.0`
+- `.env.example` — added `INITIAL_ADMIN_EMAIL`, `INITIAL_ADMIN_PASSWORD`
+- `PROJECT.md` — Phase 1 marked complete, Phase 2 queued
+
 ## v0.0.2 — Phase 0 cleanup (2026-05-08)
 
 ### Fixed

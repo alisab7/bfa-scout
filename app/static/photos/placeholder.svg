@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <!-- Background circle in BFA brand red -->
+  <circle cx="200" cy="200" r="200" fill="#C8102E"/>
+  <!-- Head -->
+  <circle cx="200" cy="148" r="52" fill="#fff" opacity="0.9"/>
+  <!-- Body silhouette -->
+  <ellipse cx="200" cy="310" rx="90" ry="70" fill="#fff" opacity="0.9"/>
+  <!-- Shirt number area (optional accent) -->
+  <circle cx="200" cy="200" r="198" fill="none" stroke="#B5924C" stroke-width="4" opacity="0.4"/>
+</svg>

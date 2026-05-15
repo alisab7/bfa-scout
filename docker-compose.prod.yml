@@ -1,0 +1,42 @@
+# BFA-Scout production stack (Phase 8).
+#
+#   app   — Flask/Gunicorn/WeasyPrint, talks to DO Managed Postgres
+#           (DATABASE_URL) and DO Spaces (photos). No local volume —
+#           photos live in Spaces, logs go to stdout.
+#   nginx — TLS termination (Cloudflare Full-strict: CF cert at the
+#           edge, self-signed origin cert here), reverse-proxy to app.
+#
+# Stock nginx:alpine with the site config + origin certs bind-mounted
+# (no custom nginx image needed — the spec listed nginx/Dockerfile but
+# a mounted-config stock image is simpler and has the same result;
+# documented as a deliberate deviation in DEPLOY.md).
+#
+# Usage on the droplet:
+#   docker compose -f docker-compose.prod.yml up -d
+services:
+  app:
+    build: .
+    image: bfa-scout:latest
+    restart: unless-stopped
+    env_file: .env.production
+    expose:
+      - "5000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5000/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      app:
+        condition: service_healthy

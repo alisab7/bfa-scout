@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}Matches — BFA Scout{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 py-8">
+
+  <a href="{{ url_for('index') }}"
+     class="text-sm mb-4 inline-block" style="color:var(--text-muted);">&larr; Home</a>
+
+  <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
+    <div>
+      <h1 class="text-2xl font-bold mb-1" style="color:var(--text);">Matches</h1>
+      <p class="text-sm" style="color:var(--text-muted);">
+        {{ matches|length }} match{{ '' if matches|length == 1 else 'es' }} on record.
+        Read-only verification list — manual creation and editing land in Phase 5c.
+      </p>
+    </div>
+  </div>
+
+  {% if matches %}
+    <div class="rounded-xl overflow-hidden"
+         style="background:var(--surface);border:1px solid var(--border);">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr style="border-bottom:1px solid var(--border);">
+              <th class="px-3 py-2 text-left"   style="color:var(--text-muted);">Date</th>
+              <th class="px-3 py-2 text-left"   style="color:var(--text-muted);">Fixture</th>
+              <th class="px-3 py-2 text-center" style="color:var(--text-muted);">Score</th>
+              <th class="px-3 py-2 text-left"   style="color:var(--text-muted);">Competition</th>
+              <th class="px-3 py-2 text-center" style="color:var(--text-muted);">Source</th>
+              <th class="px-3 py-2 text-center" style="color:var(--text-muted);">Linked stats</th>
+              <th class="px-3 py-2 text-left"   style="color:var(--text-muted);">Created by</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for m in matches %}
+              <tr style="border-bottom:1px solid var(--border);">
+                <td class="px-3 py-2 whitespace-nowrap" style="color:var(--text);">
+                  {{ m.match_date.strftime('%d %b %Y') if m.match_date else '—' }}
+                </td>
+                <td class="px-3 py-2" style="color:var(--text);">
+                  <span class="font-medium">{{ m.home_team }}</span>
+                  <span style="color:var(--text-muted);"> vs </span>
+                  <span class="font-medium">{{ m.away_team }}</span>
+                </td>
+                <td class="px-3 py-2 text-center font-semibold" style="color:var(--text);">
+                  {% if m.home_score is not none and m.away_score is not none %}
+                    {{ m.home_score }}–{{ m.away_score }}
+                  {% else %}—{% endif %}
+                </td>
+                <td class="px-3 py-2 truncate max-w-xs" style="color:var(--text-muted);">
+                  {{ m.competition or '—' }}
+                </td>
+                <td class="px-3 py-2 text-center">
+                  {% if m.source == 'wyscout' %}
+                    <span class="text-xs px-2 py-1 rounded font-semibold uppercase tracking-wide"
+                          style="background:var(--accent);color:#fff;">Wyscout</span>
+                  {% else %}
+                    <span class="text-xs px-2 py-1 rounded font-semibold uppercase tracking-wide"
+                          style="background:#3B82F6;color:#fff;">Manual</span>
+                  {% endif %}
+                </td>
+                <td class="px-3 py-2 text-center font-semibold"
+                    style="color:{% if m.linked_stats > 0 %}#22C55E{% else %}var(--text-muted){% endif %};">
+                  {{ m.linked_stats }}
+                </td>
+                <td class="px-3 py-2" style="color:var(--text-muted);">
+                  {{ m.created_by_name or '—' }}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% else %}
+    <div class="rounded-xl p-8 text-center"
+         style="background:var(--surface);border:1px dashed var(--border);">
+      <p class="text-sm" style="color:var(--text-muted);">
+        No matches on record yet. Upload a Wyscout export to seed match identities,
+        or wait for the Phase 5c evaluation form to add manual matches.
+      </p>
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}

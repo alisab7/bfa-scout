@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+
+{% block title %}Players — BFA Scout{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 py-8">
+
+  <div class="flex items-center justify-between mb-6 flex-wrap gap-2">
+    <h1 class="text-2xl font-bold" style="color:var(--text);">Players</h1>
+    <div class="flex gap-2">
+      {% if current_user.role == 'admin' %}
+        {# Phase 9: admin-only bulk import. Sits next to single-add
+           so the two intake paths share visual real estate. #}
+        <a href="{{ url_for('admin.bulk_import_index') }}"
+           class="inline-block px-4 py-2 rounded font-semibold text-sm"
+           style="background:var(--bg);color:var(--text);border:1px solid var(--border);"
+           title="Upload a CSV or Excel file with many players at once">
+          Bulk import
+        </a>
+      {% endif %}
+      {% if current_user.role in ('admin', 'technical_director', 'scout') %}
+        <a href="{{ url_for('players.new_player') }}"
+           class="inline-block px-4 py-2 rounded font-semibold text-sm text-white"
+           style="background:var(--brand);">+ Add Player</a>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="flex flex-col sm:flex-row gap-3 mb-6 flex-wrap">
+    <input
+      type="text"
+      name="q"
+      value="{{ q }}"
+      placeholder="Search by name or national ID..."
+      class="flex-1 w-full px-3 py-2 rounded text-sm"
+      style="background:var(--bg);border:1px solid var(--border);color:var(--text);"
+      hx-get="{{ url_for('players.list_players') }}"
+      hx-trigger="input changed delay:300ms"
+      hx-target="#player-grid"
+      hx-include="[name='pos'], [name='elig']">
+
+    <select
+      name="pos"
+      class="px-3 py-2 rounded text-sm"
+      style="background:var(--bg);border:1px solid var(--border);color:var(--text);min-width:180px;"
+      hx-get="{{ url_for('players.list_players') }}"
+      hx-trigger="change"
+      hx-target="#player-grid"
+      hx-include="[name='q'], [name='elig']">
+      <option value="" {% if not pos_id %}selected{% endif %}>All positions</option>
+      {% for group in position_groups %}
+        <optgroup label="{{ group.group_name }}">
+          {% for p in group.positions %}
+            <option value="{{ p.pos_id }}" {% if pos_id == p.pos_id %}selected{% endif %}>
+              {{ p.pos_name }}
+            </option>
+          {% endfor %}
+        </optgroup>
+      {% endfor %}
+    </select>
+
+    {# Phase 5c-2.1: eligibility filter — same HTMX live-update pattern #}
+    <select
+      name="elig"
+      class="px-3 py-2 rounded text-sm"
+      style="background:var(--bg);border:1px solid var(--border);color:var(--text);min-width:200px;"
+      hx-get="{{ url_for('players.list_players') }}"
+      hx-trigger="change"
+      hx-target="#player-grid"
+      hx-include="[name='q'], [name='pos'], [name='nat'], [name='club']">
+      <option value=""             {% if not elig %}selected{% endif %}>All eligibility statuses</option>
+      <option value="eligible_now" {% if elig == 'eligible_now' %}selected{% endif %}>✅ Eligible now</option>
+      <option value="pending"      {% if elig == 'pending'      %}selected{% endif %}>⏳ Pending (future)</option>
+      <option value="not_eligible" {% if elig == 'not_eligible' %}selected{% endif %}>❌ Not eligible</option>
+      <option value="unknown"      {% if elig == 'unknown'      %}selected{% endif %}>?  Unknown</option>
+    </select>
+
+    {# Phase 5c-3: nationality filter #}
+    <select
+      name="nat"
+      class="px-3 py-2 rounded text-sm"
+      style="background:var(--bg);border:1px solid var(--border);color:var(--text);min-width:200px;"
+      hx-get="{{ url_for('players.list_players') }}"
+      hx-trigger="change"
+      hx-target="#player-grid"
+      hx-include="[name='q'], [name='pos'], [name='elig'], [name='club']">
+      <option value="" {% if not nat %}selected{% endif %}>All nationalities</option>
+      {% for code, label in NATIONALITY_CHOICES %}
+        <option value="{{ code }}" {% if nat == code %}selected{% endif %}>
+          {{ label }} ({{ code }})
+        </option>
+      {% endfor %}
+    </select>
+
+    {# Phase 5c-3: club filter — Premier / First / Other #}
+    <select
+      name="club"
+      class="px-3 py-2 rounded text-sm"
+      style="background:var(--bg);border:1px solid var(--border);color:var(--text);min-width:200px;"
+      hx-get="{{ url_for('players.list_players') }}"
+      hx-trigger="change"
+      hx-target="#player-grid"
+      hx-include="[name='q'], [name='pos'], [name='elig'], [name='nat']">
+      <option value="" {% if not club %}selected{% endif %}>All clubs</option>
+      <optgroup label="Premier League">
+        {% for c in clubs_premier %}
+          <option value="{{ c.id }}" {% if club == c.id|string %}selected{% endif %}>{{ c.name }}</option>
+        {% endfor %}
+      </optgroup>
+      <optgroup label="First Division">
+        {% for c in clubs_first %}
+          <option value="{{ c.id }}" {% if club == c.id|string %}selected{% endif %}>{{ c.name }}</option>
+        {% endfor %}
+      </optgroup>
+      <option value="other" {% if club == 'other' %}selected{% endif %}>Other / free text</option>
+    </select>
+  </div>
+
+  <div id="player-grid" class="player-grid">
+    {% include 'players/_grid.html' %}
+  </div>
+
+</div>
+{% endblock %}

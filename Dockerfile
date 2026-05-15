@@ -1,24 +1,43 @@
-FROM python:3.11-slim
+# BFA-Scout production image (Phase 8).
+#
+# python:3.13-slim + the GTK/Pango/Cairo runtime WeasyPrint needs on
+# Linux (the Linux equivalent of the Windows GTK3-Runtime install we
+# documented in Phase 6). Noto fonts cover Latin + Arabic (Cairo-style
+# shaping) + colour emoji so passport PDFs render the same as dev.
+FROM python:3.13-slim
 
-# System deps for psycopg2
+# WeasyPrint native deps + Arabic/emoji fonts + curl (HEALTHCHECK uses it).
+# `shared-mime-info` lets WeasyPrint sniff embedded image types.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    libpq-dev \
+        libpango-1.0-0 libpangoft2-1.0-0 libcairo2 \
+        libgdk-pixbuf-2.0-0 libffi-dev shared-mime-info \
+        fonts-noto fonts-noto-core fonts-noto-color-emoji \
+        fonts-liberation \
+        libpq-dev curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install Python dependencies first (layer caching)
+# Install Python deps first for layer caching. boto3 + gunicorn are in
+# requirements.txt (Phase 8), so no separate pip line is needed —
+# keeping a single source of truth for dependency versions.
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Copy the application.
 COPY . .
 
-# Non-root user for security
-RUN useradd -m appuser && chown -R appuser:appuser /app
-USER appuser
+# Run as a non-root user (uid 1000 so droplet-side bind mounts, if any,
+# map cleanly).
+RUN useradd -m -u 1000 bfa && chown -R bfa:bfa /app
+USER bfa
 
 EXPOSE 5000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "wsgi:app"]
+# Container-level healthcheck. Compose ALSO declares one; both point at
+# the same /healthz (app up + DB reachable). start-period covers the
+# pool warm-up + first DB connect.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+    CMD curl -fsS http://localhost:5000/healthz || exit 1
+
+CMD ["gunicorn", "-c", "gunicorn.conf.py", "wsgi:app"]

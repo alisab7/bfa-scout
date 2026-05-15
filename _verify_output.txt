@@ -4,29 +4,60 @@
 {"db":"connected","status":"ok"}
  
 [2] / (checking for "BFA Scouting") 
-  <title>BFA Scouting & Evaluation</title>
-  <!-- BFA CSS vars -->
-    <!-- Left: BFA logo / wordmark -->
-      <span>BFA Scout</span>
-  <!-- BFA crest placeholder -->
-    <span style="color:var(--brand);font-weight:700;">BFA</span>
-      BFA Scouting &amp; Evaluation
-        A unified scouting and evaluation system for BFA's National Team Committee.
-    BFA Scouting &amp; Evaluation &mdash; National Team Committee
  
 [3] /auth/ 
-TODO: auth blueprint — Phase 1 
+<!doctype html>
+<html lang=en>
+<title>404 Not Found</title>
+<h1>Not Found</h1>
+<p>The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.</p>
+ 
 [4] /players/ 
-TODO: players blueprint — Phase 3 
+<!doctype html>
+<html lang=en>
+<title>Redirecting...</title>
+<h1>Redirecting...</h1>
+<p>You should be redirected automatically to the target URL: <a href="/auth/login?next=%2Fplayers%2F">/auth/login?next=%2Fplayers%2F</a>. If not, click the link.
+ 
 [5] /evaluations/ 
-TODO: evaluations blueprint — Phase 5 
+<!doctype html>
+<html lang=en>
+<title>Redirecting...</title>
+<h1>Redirecting...</h1>
+<p>You should be redirected automatically to the target URL: <a href="/auth/login?next=%2Fevaluations%2F">/auth/login?next=%2Fevaluations%2F</a>. If not, click the link.
+ 
 [6] /criteria/ 
-TODO: criteria blueprint — Phase 2 
+<!doctype html>
+<html lang=en>
+<title>Redirecting...</title>
+<h1>Redirecting...</h1>
+<p>You should be redirected automatically to the target URL: <a href="/auth/login?next=%2Fcriteria%2F">/auth/login?next=%2Fcriteria%2F</a>. If not, click the link.
+ 
 [7] /wyscout/ 
-TODO: wyscout blueprint — Phase 4 
+<!doctype html>
+<html lang=en>
+<title>Redirecting...</title>
+<h1>Redirecting...</h1>
+<p>You should be redirected automatically to the target URL: <a href="/auth/login?next=%2Fwyscout%2F">/auth/login?next=%2Fwyscout%2F</a>. If not, click the link.
+ 
 [8] /reports/ 
-TODO: reports blueprint — Phase 6 
+<!doctype html>
+<html lang=en>
+<title>Redirecting...</title>
+<h1>Redirecting...</h1>
+<p>You should be redirected automatically to the target URL: <a href="/auth/login?next=%2Freports%2F">/auth/login?next=%2Freports%2F</a>. If not, click the link.
+ 
 [9] /ai/ 
-TODO: ai blueprint — Phase 7 
+<!doctype html>
+<html lang=en>
+<title>Redirecting...</title>
+<h1>Redirecting...</h1>
+<p>You should be redirected automatically to the target URL: <a href="/auth/login?next=%2Fai%2F">/auth/login?next=%2Fai%2F</a>. If not, click the link.
+ 
 [10] /api/ 
-TODO: api blueprint — Phase 1+ 
+<!doctype html>
+<html lang=en>
+<title>Redirecting...</title>
+<h1>Redirecting...</h1>
+<p>You should be redirected automatically to the target URL: <a href="/auth/login?next=%2Fapi%2F">/auth/login?next=%2Fapi%2F</a>. If not, click the link.
+ 

@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}Recovery — Deleted Evaluations — BFA Scout{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto px-4 py-8">
+
+  <div class="mb-6">
+    <a href="{{ url_for('index') }}" class="text-sm" style="color:var(--text-muted);">&larr; Home</a>
+    <h1 class="text-2xl font-bold mt-2" style="color:var(--text);">Deleted Evaluations</h1>
+    <p class="text-sm mt-1" style="color:var(--text-muted);">
+      Soft-deleted evaluations across the system. Restore returns them to the
+      previous status; locked-then-deleted evaluations come back as
+      <strong>submitted</strong> (admin can re-lock if needed).
+    </p>
+  </div>
+
+  {% if deleted %}
+    <div class="rounded-xl overflow-hidden"
+         style="background:var(--surface);border:1px solid var(--border);">
+      <table class="w-full text-sm">
+        <thead>
+          <tr style="border-bottom:1px solid var(--border);">
+            <th class="px-3 py-2 text-left"  style="color:var(--text-muted);">Player</th>
+            <th class="px-3 py-2 text-left"  style="color:var(--text-muted);">Match</th>
+            <th class="px-3 py-2 text-left"  style="color:var(--text-muted);">Evaluator</th>
+            <th class="px-3 py-2 text-left"  style="color:var(--text-muted);">Deleted by</th>
+            <th class="px-3 py-2 text-left"  style="color:var(--text-muted);">When</th>
+            <th class="px-3 py-2 text-left"  style="color:var(--text-muted);">Reason</th>
+            <th class="px-3 py-2 text-right" style="color:var(--text-muted);">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for d in deleted %}
+            <tr style="border-bottom:1px solid var(--border);">
+              <td class="px-3 py-2" style="color:var(--text);">
+                <a href="{{ url_for('players.player_profile', player_id=d.player_id) }}"
+                   class="underline" style="color:var(--text);">{{ d.player_name }}</a>
+              </td>
+              <td class="px-3 py-2" style="color:var(--text-muted);">
+                {% if d.m_date %}
+                  {{ d.m_date.strftime('%Y-%m-%d') }} · {{ d.m_home }} vs {{ d.m_away }}
+                {% else %}
+                  {{ d.match_label or '—' }}
+                {% endif %}
+              </td>
+              <td class="px-3 py-2" style="color:var(--text);">{{ d.evaluator_name }}</td>
+              <td class="px-3 py-2" style="color:var(--text);">{{ d.deleted_by_name }}</td>
+              <td class="px-3 py-2 whitespace-nowrap" style="color:var(--text-muted);">
+                {{ d.deleted_at.strftime('%Y-%m-%d %H:%M') if d.deleted_at else '—' }}
+              </td>
+              <td class="px-3 py-2 text-xs" style="color:var(--text);">{{ d.deleted_reason }}</td>
+              <td class="px-3 py-2 text-right">
+                <form method="POST" action="{{ url_for('evaluations.restore', eval_id=d.id) }}"
+                      onsubmit="return confirm('Restore this evaluation?');"
+                      class="inline">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit"
+                          class="text-xs px-3 py-1 rounded font-semibold text-white"
+                          style="background:var(--brand);">Restore</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="rounded-xl p-8 text-center"
+         style="background:var(--surface);border:1px dashed var(--border);">
+      <p class="text-sm" style="color:var(--text-muted);">No deleted evaluations.</p>
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}

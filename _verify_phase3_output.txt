@@ -1,0 +1,11 @@
+At D:\BFA-Scout\_verify_phase3.ps1:87 char:145
++ ... SE_URL=" } | ForEach-Object { [regex]::Match($_, "://[^:]+:([^@]+)@") ...
++                                                                  ~
+Missing type name after '['.
+At D:\BFA-Scout\_verify_phase3.ps1:87 char:152
++ ...  } | ForEach-Object { [regex]::Match($_, "://[^:]+:([^@]+)@").Groups[ ...
++                                                                 ~
+No characters are allowed after a here-string header but before the end of the line.
+    + CategoryInfo          : ParserError: (:) [], ParentContainsErrorRecordException
+    + FullyQualifiedErrorId : MissingTypename
+ 

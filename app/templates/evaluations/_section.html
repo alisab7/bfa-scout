@@ -1,0 +1,31 @@
+{# Reusable accordion section for one category of sliders (Phase 5c-1.1).
+   Vars in scope: section, expanded, filled_count (rated + N/A from DB pre-load),
+                  scores (dict criterion_id → {'score','is_not_applicable'}).
+   Note: filled_count is computed server-side at page render — it reflects DB
+   state, not in-flight Alpine interactions. Live updating across slider state
+   changes is deferred (would require Alpine cross-component coordination).
+#}
+<details {% if expanded %}open{% endif %}
+         class="rounded-lg mb-3"
+         style="background:var(--surface);border:1px solid var(--border);">
+  <summary class="px-4 py-3 cursor-pointer font-semibold flex justify-between items-center"
+           style="color:var(--text);">
+    <span>{{ section.category.name_en }}
+      <span class="text-xs ml-2" style="color:var(--text-muted);direction:rtl;">{{ section.category.name_ar }}</span>
+    </span>
+    <span class="text-xs" style="color:var(--text-muted);">
+      {{ filled_count }} / {{ section.criteria | length }} decided
+    </span>
+  </summary>
+  <div class="px-4 pb-4">
+    {% for crit in section.criteria %}
+      {% set entry = scores.get(crit.criterion_id) %}
+      {% with
+         prefilled_value = (entry.score if entry else none),
+         prefilled_na    = (entry.is_not_applicable if entry else false)
+      %}
+        {% include 'evaluations/_slider.html' %}
+      {% endwith %}
+    {% endfor %}
+  </div>
+</details>

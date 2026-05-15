@@ -1,0 +1,27 @@
+{# Submit-confirmation modal — toggled by Alpine `submitOpen` after the
+   soft-warning gate (5c-2). Confirm button delegates to actuallySubmit()
+   so the same code path handles both modals' confirm flow. #}
+<div x-show="submitOpen"
+     x-cloak
+     style="display:none;"
+     class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+  <div class="rounded-xl p-6 max-w-md w-full"
+       style="background:var(--surface);border:1px solid var(--border);">
+    <h3 class="font-bold text-lg mb-3" style="color:var(--text);">
+      Submit this evaluation? · <span style="direction:rtl;">إرسال هذا التقييم؟</span>
+    </h3>
+    <p class="text-sm mb-5" style="color:var(--text-muted);">
+      Once submitted you can keep editing until an admin or technical director
+      locks it. After that, changes are blocked.
+    </p>
+    <div class="flex items-center justify-end gap-3">
+      <button type="button" @click="submitOpen = false"
+              class="text-sm" style="color:var(--text-muted);">Cancel</button>
+      <button type="button" @click="actuallySubmit()"
+              class="px-4 py-2 rounded text-sm font-semibold text-white"
+              style="background:var(--brand);">
+        Submit · <span style="direction:rtl;">إرسال</span>
+      </button>
+    </div>
+  </div>
+</div>

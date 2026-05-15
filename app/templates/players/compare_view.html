@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% from '_macros/eligibility_badge.html' import eligibility_badge %}
+
+{% block title %}Player Comparison — BFA Scout{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 py-8">
+
+  <a href="{{ url_for('players.compare_form') }}"
+     class="text-sm mb-4 inline-block" style="color:var(--text-muted);">&larr; Pick again</a>
+
+  <h1 class="text-2xl font-bold mb-6" style="color:var(--text);">Player Comparison</h1>
+
+  {# Use a switch on player count for the header grid layout #}
+  {% set ncols = data.players|length %}
+  {% if ncols == 2 %}
+    {% set grid_cols = 'grid-cols-1 sm:grid-cols-2' %}
+  {% else %}
+    {% set grid_cols = 'grid-cols-1 sm:grid-cols-3' %}
+  {% endif %}
+
+  {# ── Bio header row ── #}
+  <div class="grid {{ grid_cols }} gap-4 mb-6">
+    {% for p in data.players %}
+      <div class="rounded-xl p-4 flex items-center gap-3"
+           style="background:var(--surface);border:1px solid var(--border);">
+        <img src="{{ p.photo_url }}"
+             alt="{{ p.full_name }}"
+             class="rounded-lg shrink-0"
+             style="width:72px;height:72px;object-fit:cover;"
+             onerror="this.src='{{ url_for('static', filename='photos/placeholder.svg') }}'">
+        <div class="min-w-0 flex-1">
+          <a href="{{ url_for('players.player_profile', player_id=p.id) }}"
+             class="font-bold text-base block truncate"
+             style="color:var(--text);">{{ p.full_name }}</a>
+          {% if p.full_name_ar %}
+            <p class="text-xs truncate" style="color:var(--text-muted);direction:rtl;">{{ p.full_name_ar }}</p>
+          {% endif %}
+          {% if p.position_name %}
+            <span class="pos-badge mt-1 inline-block" data-group="{{ p.position_group_code }}">
+              {{ p.position_name }}
+            </span>
+          {% endif %}
+          <p class="text-xs mt-1 truncate" style="color:var(--text-muted);">
+            {{ p.current_club or '—' }} &middot; Age {{ p.age if p.age is not none else '—' }}
+          </p>
+          {# Phase 6.2.3: eligibility badge with nationality flag #}
+          <div class="mt-2">{{ eligibility_badge(p) }}</div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+
+  {# ── Stats grid: column per player, row per metric, max highlighted ── #}
+  <div class="rounded-xl mb-6 overflow-hidden"
+       style="background:var(--surface);border:1px solid var(--border);">
+    <div class="px-4 py-3" style="border-bottom:1px solid var(--border);">
+      <h3 class="text-sm font-semibold" style="color:var(--text-muted);">Career statistics</h3>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr style="border-bottom:1px solid var(--border);">
+            <th class="px-3 py-2 text-left" style="color:var(--text-muted);">Metric</th>
+            {% for p in data.players %}
+              <th class="px-3 py-2 text-right" style="color:var(--text-muted);">
+                {{ p.full_name.split(' ')[0] }}
+              </th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for metric_key, metric_label in [
+            ('matches_count',         'Matches'),
+            ('total_minutes',         'Minutes'),
+            ('goals',                 'Goals'),
+            ('assists',               'Assists'),
+            ('shots',                 'Shots'),
+            ('shots_on_target',       'Shots on target'),
+            ('xg_total',              'xG'),
+            ('pass_accuracy_pct',     'Pass %'),
+            ('duels_won_pct',         'Duels won %'),
+            ('aerial_duels_won_pct',  'Aerial won %'),
+            ('yellow_cards',          'Yellow cards'),
+            ('red_cards',             'Red cards'),
+          ] %}
+            <tr style="border-bottom:1px solid var(--border);">
+              <td class="px-3 py-2" style="color:var(--text);">{{ metric_label }}</td>
+              {% for p in data.players %}
+                {% set val = p.summary.get(metric_key) %}
+                {% set is_max = data.best_per_metric.get(metric_key) == p.id %}
+                <td class="px-3 py-2 text-right {% if is_max %}font-semibold{% endif %}"
+                    style="color:{% if is_max %}#22C55E{% else %}var(--text);{% endif %}">
+                  {% if val is none %}
+                    —
+                  {% elif metric_key.endswith('_pct') %}
+                    {{ '%.0f'|format(val) }}%
+                  {% elif metric_key == 'xg_total' %}
+                    {{ '%.2f'|format(val) }}
+                  {% else %}
+                    {{ val }}
+                  {% endif %}
+                </td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {# ── Overlapping Wyscout radar ── #}
+  <div class="rounded-xl p-4"
+       style="background:var(--surface);border:1px solid var(--border);">
+    <h3 class="text-sm font-semibold mb-3" style="color:var(--text-muted);">Performance profile (Wyscout)</h3>
+    <div style="position:relative;height:420px;">
+      <canvas id="compareRadar"
+              data-compare='{{ data | tojson }}'></canvas>
+    </div>
+  </div>
+
+  {# ── Phase 5d: scout-assessment section. The wrapping <section id="scout-section">
+        + toggle bar now live INSIDE the partial so the HTMX swap can
+        replace the whole element via outerHTML on mode change. ── #}
+  {% include 'players/_compare_scout_section.html' %}
+</div>
+
+<script src="{{ url_for('static', filename='js/compare.js') }}" defer></script>
+{# Phase 5d-1: scout-assessment radars (1 category-level + 4 per-category).
+   Defer-loaded; fires DOMContentLoaded init AND a re-init on htmx:afterSwap
+   for the Latest ↔ Averaged toggle. #}
+<script src="{{ url_for('static', filename='js/scout_radars.js') }}" defer></script>
+{% endblock %}

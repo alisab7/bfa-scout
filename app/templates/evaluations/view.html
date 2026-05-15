@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+
+{% block title %}Evaluation #{{ ev.id }} — BFA Scout{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 py-6">
+
+  <a href="{{ url_for('players.player_profile', player_id=ev.player_id) }}"
+     class="text-sm mb-4 inline-block" style="color:var(--text-muted);">&larr; {{ ev.player_name }}</a>
+
+  {# ── Status header ──────────────────────────────────────────── #}
+  <div class="rounded-xl p-4 mb-6 flex items-center justify-between gap-3 flex-wrap"
+       style="background:var(--surface);border:1px solid var(--border);"
+       x-data="{ unlockOpen: false }">
+    <div>
+      <h1 class="text-xl font-bold" style="color:var(--text);">
+        {{ ev.player_name }}
+        {% if ev.last_edited_by and ev.last_edited_by != ev.evaluator_id %}
+          <span class="ml-2 text-xs px-2 py-0.5 rounded uppercase tracking-wide align-middle"
+                style="background:var(--brand);color:#fff;"
+                title="Edited by {{ ev.last_edited_by_name or 'admin' }} on {{ ev.last_edited_at.strftime('%Y-%m-%d') if ev.last_edited_at else '?' }}">
+            edited by admin
+          </span>
+        {% endif %}
+      </h1>
+      <p class="text-sm mt-0.5" style="color:var(--text-muted);">
+        Evaluator: {{ ev.evaluator_name }} ·
+        {% if ev.m_date %}
+          {{ ev.m_date.strftime('%Y-%m-%d') }} · {{ ev.m_home }} vs {{ ev.m_away }}
+        {% else %}
+          (no match linked)
+        {% endif %}
+      </p>
+    </div>
+    <div class="flex items-center gap-3">
+      <span class="text-xs px-3 py-1 rounded font-semibold uppercase tracking-wide"
+            style="background:{% if ev.status == 'submitted' %}#22C55E{% elif ev.status == 'locked' %}var(--brand){% else %}var(--accent){% endif %};color:#fff;">
+        {{ ev.status }}{% if ev.status == 'locked' %} 🔒{% endif %}
+      </span>
+
+      {# ── Lock/Unlock action buttons (admin/TD only) ── #}
+      {% if current_user.has_role('admin', 'technical_director') %}
+        {% if ev.status == 'submitted' %}
+          <form method="POST" action="{{ url_for('evaluations.lock', eval_id=ev.id) }}"
+                onsubmit="return confirm('Lock this evaluation?');"
+                class="inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="text-xs underline" style="color:var(--brand);">
+              Lock 🔒
+            </button>
+          </form>
+        {% elif ev.status == 'locked' %}
+          <button type="button" @click="unlockOpen = true"
+                  class="text-xs underline" style="color:var(--brand);">Unlock</button>
+        {% endif %}
+      {% endif %}
+    </div>
+
+    {# ── Unlock modal (admin/TD only, only when locked) ── #}
+    {% if ev.status == 'locked' and current_user.has_role('admin', 'technical_director') %}
+      <div x-show="unlockOpen" x-cloak style="display:none;"
+           class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+        <div class="rounded-xl p-6 max-w-md w-full"
+             style="background:var(--surface);border:1px solid var(--border);">
+          <h3 class="font-bold text-lg mb-3" style="color:var(--text);">Unlock evaluation #{{ ev.id }}</h3>
+          <p class="text-sm mb-4" style="color:var(--text-muted);">
+            Unlock returns this evaluation to <strong>submitted</strong> so the
+            original scout (or admin) can edit it again. The reason below is
+            audit-logged.
+          </p>
+          <form method="POST" action="{{ url_for('evaluations.unlock', eval_id=ev.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label class="block text-xs uppercase tracking-wide mb-1" style="color:var(--text-muted);">
+              Reason (min 10 chars)
+            </label>
+            <textarea name="reason" rows="3" minlength="10" required
+                      class="w-full px-3 py-2 rounded text-sm"
+                      style="background:var(--bg);border:1px solid var(--border);color:var(--text);"></textarea>
+            <div class="flex items-center justify-end gap-3 mt-4">
+              <button type="button" @click="unlockOpen = false"
+                      class="text-sm" style="color:var(--text-muted);">Cancel</button>
+              <button type="submit"
+                      class="px-4 py-2 rounded text-sm font-semibold text-white"
+                      style="background:var(--brand);">Unlock</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  {# ── If own draft → continue editing; if submitted/admin → admin-edit available ── #}
+  {% if is_own_draft %}
+    <div class="rounded-xl p-4 mb-6"
+         style="background:var(--surface);border:1px dashed var(--border);">
+      <p class="text-sm mb-3" style="color:var(--text-muted);">
+        This is your own draft — keep refining until you submit.
+      </p>
+      <a href="{{ url_for('evaluations.evaluate', player_id=ev.player_id, match_id=ev.match_id) }}"
+         class="inline-block px-4 py-2 rounded text-sm font-semibold text-white"
+         style="background:var(--brand);">Continue editing</a>
+    </div>
+  {% elif ev.status == 'submitted' and current_user.has_role('admin', 'technical_director') %}
+    <div class="rounded-xl p-4 mb-6"
+         style="background:var(--surface);border:1px dashed var(--border);">
+      <p class="text-sm mb-3" style="color:var(--text-muted);">
+        Admin edit lets you overwrite the scout's content. Original
+        evaluator stays attributed; the change is audit-logged and a
+        "edited by admin" badge appears.
+      </p>
+      <a href="{{ url_for('evaluations.evaluate', player_id=ev.player_id, match_id=ev.match_id) }}"
+         class="inline-block px-4 py-2 rounded text-sm font-semibold text-white"
+         style="background:var(--brand);">Admin edit</a>
+    </div>
+  {% endif %}
+
+  {# ── Read-only render of scores grouped by category (Phase 5c-1.1) ──
+     scores entries are {'score','is_not_applicable'} or absent.
+       absent      → untouched → "—"
+       is_NA=True  → N/A badge
+       otherwise   → numeric
+  #}
+  {% for section in sections %}
+    {% set ns = namespace(decided=0) %}
+    {% for c in section.criteria %}
+      {% if scores.get(c.criterion_id) is not none %}{% set ns.decided = ns.decided + 1 %}{% endif %}
+    {% endfor %}
+    <div class="rounded-lg mb-3"
+         style="background:var(--surface);border:1px solid var(--border);">
+      <div class="px-4 py-3 flex items-center justify-between"
+           style="border-bottom:1px solid var(--border);">
+        <h3 class="font-semibold" style="color:var(--text);">{{ section.category.name_en }}</h3>
+        <span class="text-xs" style="color:var(--text-muted);">
+          {{ ns.decided }} / {{ section.criteria | length }} decided
+        </span>
+      </div>
+      <ul class="px-4 py-2 divide-y" style="border-color:var(--border);">
+        {% for c in section.criteria %}
+          {% set entry = scores.get(c.criterion_id) %}
+          {% set is_decided = entry is not none %}
+          {% set is_na      = is_decided and entry.is_not_applicable %}
+          <li class="flex items-center justify-between py-2 text-sm">
+            <span style="color:{% if is_decided %}var(--text){% else %}var(--text-muted){% endif %};">
+              {{ c.name_en }}
+            </span>
+            {% if is_na %}
+              <span class="text-xs px-2 py-0.5 rounded font-semibold uppercase tracking-wide"
+                    style="background:var(--bg);color:var(--text-muted);border:1px solid var(--border);"
+                    title="غير متخصص">
+                N/A · <span style="direction:rtl;">غير متخصص</span>
+              </span>
+            {% elif is_decided %}
+              <span class="font-mono" style="color:var(--brand);font-weight:700;">
+                {{ '%.1f'|format(entry.score) }}
+              </span>
+            {% else %}
+              <span class="font-mono" style="color:var(--text-muted);">—</span>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endfor %}
+
+  {# ── NT Readiness summary ──────────────────────────────────── #}
+  <div class="rounded-lg mb-3 p-4"
+       style="background:var(--surface);border:1px solid var(--border);">
+    <h3 class="font-semibold mb-3" style="color:var(--text);">NT Readiness</h3>
+    <dl class="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+      <div>
+        <dt class="text-xs uppercase tracking-wide mb-0.5" style="color:var(--text-muted);">Readiness</dt>
+        <dd style="color:var(--text);">{{ ev.nt_readiness_level or '—' }}</dd>
+      </div>
+      <div>
+        <dt class="text-xs uppercase tracking-wide mb-0.5" style="color:var(--text-muted);">Recommendation</dt>
+        <dd style="color:var(--text);">{{ (ev.recommendation or '—') | replace('_', ' ') }}</dd>
+      </div>
+      <div>
+        <dt class="text-xs uppercase tracking-wide mb-0.5" style="color:var(--text-muted);">Eligibility</dt>
+        <dd style="color:var(--text);">{{ (ev.eligibility_status or '—') | replace('_', ' ') }}</dd>
+      </div>
+      {% if ev.comparable_player %}
+        <div class="col-span-full">
+          <dt class="text-xs uppercase tracking-wide mb-0.5" style="color:var(--text-muted);">Comparable player</dt>
+          <dd style="color:var(--text);">{{ ev.comparable_player }}</dd>
+        </div>
+      {% endif %}
+      {% if ev.eligibility_notes %}
+        <div class="col-span-full">
+          <dt class="text-xs uppercase tracking-wide mb-0.5" style="color:var(--text-muted);">Eligibility notes</dt>
+          <dd style="color:var(--text);">{{ ev.eligibility_notes }}</dd>
+        </div>
+      {% endif %}
+    </dl>
+  </div>
+
+  {% if ev.summary %}
+    <div class="rounded-lg p-4"
+         style="background:var(--surface);border:1px solid var(--border);">
+      <h3 class="font-semibold mb-2" style="color:var(--text);">Summary</h3>
+      <p class="text-sm whitespace-pre-wrap" style="color:var(--text);">{{ ev.summary }}</p>
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}

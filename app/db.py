@@ -1,4 +1,5 @@
 import os
+import sys
 import click
 import psycopg2
 import psycopg2.pool
@@ -60,6 +61,56 @@ def init_db():
         conn.rollback()
         click.echo(f'Error initialising database: {e}', err=True)
         raise
+    finally:
+        _get_pool().putconn(conn)
+
+
+def seed_initial_admin():
+    """
+    Create the initial admin user from INITIAL_ADMIN_EMAIL / INITIAL_ADMIN_PASSWORD
+    env vars — one-shot only. Once any admin row exists this function is a no-op.
+    Called at app startup inside an app_context, so current_app and _get_pool() work,
+    but g (request context) is NOT available — use pool directly.
+    """
+    conn = _get_pool().getconn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) AS n FROM users WHERE role = 'admin'")
+            if cur.fetchone()['n'] > 0:
+                return  # Admin already exists — env vars are ignored
+
+        # Phase 8: accept the spec's ADMIN_* names, falling back to the
+        # legacy INITIAL_ADMIN_* the codebase shipped with. One
+        # idempotent seed path, two accepted env conventions, so the
+        # startup seeder and scripts/bootstrap_admin.py never disagree.
+        email    = (os.environ.get('ADMIN_EMAIL')
+                    or os.environ.get('INITIAL_ADMIN_EMAIL'))
+        password = (os.environ.get('ADMIN_PASSWORD')
+                    or os.environ.get('INITIAL_ADMIN_PASSWORD'))
+
+        if not email or not password:
+            current_app.logger.warning(
+                'No admin user exists and neither ADMIN_EMAIL/PASSWORD nor '
+                'INITIAL_ADMIN_EMAIL/PASSWORD are set. Add a pair to the '
+                'env file and restart to seed the first admin.'
+            )
+            return
+
+        from werkzeug.security import generate_password_hash
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO users (email, password_hash, full_name, role, is_active)
+                VALUES (%s, %s, 'Initial Administrator', 'admin', TRUE)
+                """,
+                (email, generate_password_hash(password, method='pbkdf2:sha256:600000'))
+            )
+        conn.commit()
+        current_app.logger.info(f'Seeded initial admin: {email}')
+
+    except Exception as exc:
+        conn.rollback()
+        print(f'[db] ERROR in seed_initial_admin: {exc}', file=sys.stderr)
     finally:
         _get_pool().putconn(conn)
 

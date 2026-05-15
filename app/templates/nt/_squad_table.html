@@ -1,0 +1,71 @@
+{# Squad table for the /nt workspace.
+   Vars in scope: squad (list of dicts from get_eligible_squad_players)
+#}
+<div class="rounded-xl overflow-hidden"
+     style="background:var(--surface);border:1px solid var(--border);">
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr style="background:var(--bg);border-bottom:1px solid var(--border);">
+          <th class="px-4 py-3 text-left"  style="color:var(--text-muted);">Player</th>
+          <th class="px-4 py-3 text-left"  style="color:var(--text-muted);">Position</th>
+          <th class="px-4 py-3 text-left"  style="color:var(--text-muted);">Club</th>
+          <th class="px-4 py-3 text-left"  style="color:var(--text-muted);">Eligibility</th>
+          <th class="px-4 py-3 text-right" style="color:var(--text-muted);">NT evals</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in squad %}
+          {# NT-eval count uses the helper directly so the squad query
+             stays simple. Cheap query — runs once per row at render
+             time; cache later if the squad grows beyond a few dozen. #}
+          {% set nt_count = get_nt_evaluation_count(p.id) %}
+          <tr style="border-bottom:1px solid var(--border);">
+            <td class="px-4 py-3">
+              <a href="{{ url_for('players.player_profile', player_id=p.id) }}"
+                 class="font-semibold" style="color:var(--text);">
+                {{ p.full_name }}
+              </a>
+              {% if p.full_name_ar %}
+                <span class="text-xs ml-1" style="color:var(--text-muted);direction:rtl;">
+                  {{ p.full_name_ar }}
+                </span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3" style="color:var(--text);">
+              {{ p.position_name or '—' }}
+              {% if p.position_group_code %}
+                <span class="text-xs" style="color:var(--text-muted);">
+                  ({{ p.position_group_code }})
+                </span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3" style="color:var(--text);">
+              {{ p.club_name or p.current_club or '—' }}
+            </td>
+            <td class="px-4 py-3">
+              {% if p.nationality_status == 'bahraini' %}
+                <span style="color:#22C55E;">Bahraini citizen</span>
+              {% elif p.nationality_status == 'foreign_ancestry' %}
+                <span style="color:#22C55E;">Ancestry route</span>
+              {% elif p.eligible_from_date %}
+                <span style="color:#22C55E;">From {{ p.eligible_from_date }}</span>
+              {% else %}
+                <span style="color:var(--accent);">5-yr residency</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3 text-right">
+              {% if nt_count > 0 %}
+                <span class="font-mono" style="color:var(--brand);font-weight:700;">
+                  {{ nt_count }}
+                </span>
+              {% else %}
+                <span style="color:var(--text-muted);">0</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

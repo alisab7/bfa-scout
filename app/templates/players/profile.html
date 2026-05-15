@@ -1,0 +1,454 @@
+{% extends "base.html" %}
+
+{% block title %}{{ player.full_name }} — BFA Scout{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-8">
+
+  <a href="{{ url_for('players.list_players') }}"
+     class="text-sm mb-6 inline-block" style="color:var(--text-muted);">&larr; Players</a>
+
+  <!-- Header -->
+  <div class="rounded-xl p-6 mb-6 flex flex-col sm:flex-row gap-6"
+       style="background:var(--surface);border:1px solid var(--border);">
+
+    <div class="shrink-0">
+      <img src="{{ get_player_photo(player.id) }}"
+           alt="{{ player.full_name }}"
+           class="rounded-xl"
+           style="width:160px;height:160px;object-fit:cover;"
+           onerror="this.src='{{ url_for('static', filename='photos/placeholder.svg') }}'">
+    </div>
+
+    <div class="flex-1 min-w-0">
+      <h1 class="text-2xl font-bold mb-1" style="color:var(--text);">{{ player.full_name }}</h1>
+      {% if player.full_name_ar %}
+        <p class="text-lg mb-2" style="color:var(--text-muted);direction:rtl;">{{ player.full_name_ar }}</p>
+      {% endif %}
+
+      {% if player.position_name %}
+        <span class="pos-badge mb-3 inline-block" data-group="{{ player.group_code }}">
+          {{ player.position_name }}{% if player.group_name %} &mdash; {{ player.group_name }}{% endif %}
+        </span>
+      {% endif %}
+
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3">
+        {% if player.dob %}
+          <div>
+            <div class="text-xs uppercase tracking-wide mb-0.5" style="color:var(--text-muted);">Age</div>
+            <div class="font-semibold" style="color:var(--text);">{{ age(player.dob) }}</div>
+          </div>
+        {% endif %}
+        {% if player.nationality_code %}
+          <div>
+            <div class="text-xs uppercase tracking-wide mb-0.5" style="color:var(--text-muted);">Nationality</div>
+            <div class="font-semibold" style="color:var(--text);">
+              {# Phase 6.2.3: inline SVG flag replaces flag_emoji() unicode #}
+              {% set flag = get_flag_svg(player.nationality_code) %}
+              {% if flag %}
+                <span style="display:inline-block;width:20px;height:15px;line-height:0;vertical-align:middle;margin-right:4px;">{{ flag | safe }}</span>
+              {% endif %}
+              {{ NATIONALITY_LABEL.get(player.nationality_code, player.nationality_code) }}
+            </div>
+          </div>
+        {% elif player.nationality %}
+          <div>
+            <div class="text-xs uppercase tracking-wide mb-0.5" style="color:var(--text-muted);">Nationality</div>
+            <div class="font-semibold" style="color:var(--text);">{{ player.nationality }}</div>
+          </div>
+        {% endif %}
+        {% if player.current_club %}
+          <div>
+            <div class="text-xs uppercase tracking-wide mb-0.5" style="color:var(--text-muted);">Club</div>
+            <div class="font-semibold truncate" style="color:var(--text);">{{ player.current_club }}</div>
+          </div>
+        {% endif %}
+      </div>
+
+      {# Phase 5c-3: bio counts at a glance #}
+      {% if bio_counts %}
+        <div class="flex flex-wrap gap-4 mt-3 text-xs" style="color:var(--text-muted);">
+          <span title="Wyscout match rows">📊 {{ bio_counts.wyscout_match_count }} Wyscout match{{ '' if bio_counts.wyscout_match_count == 1 else 'es' }}</span>
+          <span title="Non-deleted committee evaluations">📝 {{ bio_counts.evaluation_count }} evaluation{{ '' if bio_counts.evaluation_count == 1 else 's' }}</span>
+        </div>
+      {% endif %}
+    </div>
+
+    {% if current_user.role in ('admin', 'technical_director', 'scout') %}
+      <div class="flex flex-col gap-2 shrink-0">
+        <a href="{{ url_for('evaluations.evaluate', player_id=player.id) }}"
+           class="px-4 py-2 rounded text-sm font-semibold text-white text-center"
+           style="background:var(--brand);"
+           title="تقييم جديد">New Evaluation</a>
+        <a href="{{ url_for('players.edit_player', player_id=player.id) }}"
+           class="px-4 py-2 rounded text-sm font-semibold text-white text-center"
+           style="background:var(--accent);">Edit</a>
+
+        {% if player.is_active %}
+          <form method="POST"
+                action="{{ url_for('players.deactivate', player_id=player.id) }}"
+                onsubmit="return confirm('Deactivate {{ player.full_name }}?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit"
+                    class="w-full px-4 py-2 rounded text-sm font-semibold"
+                    style="background:var(--surface);border:1px solid var(--brand);color:var(--brand);">
+              Deactivate
+            </button>
+          </form>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Bio -->
+  <div class="rounded-xl p-6 mb-6"
+       style="background:var(--surface);border:1px solid var(--border);">
+    <h2 class="text-base font-semibold mb-4" style="color:var(--accent);">Bio</h2>
+    <dl class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+      {% if player.dob %}
+        <div>
+          <dt class="text-xs uppercase tracking-wide mb-0.5" style="color:var(--text-muted);">Date of Birth</dt>
+          <dd style="color:var(--text);">{{ player.dob.strftime('%d %b %Y') }}</dd>
+        </div>
+      {% endif %}
+      {% if player.height_cm %}
+        <div>
+          <dt class="text-xs uppercase tracking-wide mb-0.5" style="color:var(--text-muted);">Height</dt>
+          <dd style="color:var(--text);">{{ player.height_cm }} cm</dd>
+        </div>
+      {% endif %}
+      {% if player.weight_kg %}
+        <div>
+          <dt class="text-xs uppercase tracking-wide mb-0.5" style="color:var(--text-muted);">Weight</dt>
+          <dd style="color:var(--text);">{{ player.weight_kg }} kg</dd>
+        </div>
+      {% endif %}
+      {% if player.national_id %}
+        <div>
+          <dt class="text-xs uppercase tracking-wide mb-0.5" style="color:var(--text-muted);">National ID</dt>
+          <dd style="color:var(--text);">{{ player.national_id }}</dd>
+        </div>
+      {% endif %}
+      <div>
+        <dt class="text-xs uppercase tracking-wide mb-0.5" style="color:var(--text-muted);">Status</dt>
+        <dd>
+          {% if player.is_active %}
+            <span class="text-sm font-semibold" style="color:#22C55E;">Active</span>
+          {% else %}
+            <span class="text-sm font-semibold" style="color:var(--brand);">Inactive</span>
+          {% endif %}
+        </dd>
+      </div>
+    </dl>
+
+    {% if player.notes %}
+      <div class="mt-4 pt-4" style="border-top:1px solid var(--border);">
+        <dt class="text-xs uppercase tracking-wide mb-1" style="color:var(--text-muted);">Notes</dt>
+        <dd class="text-sm leading-relaxed" style="color:var(--text);">{{ player.notes }}</dd>
+      </div>
+    {% endif %}
+  </div>
+
+  {# Phase 6.2: Player Passport download block. Moved here from the
+     bottom of the page (where it lived in 6.0-6.1) — committee
+     reviewers want the printable artefact reachable without scrolling
+     past the Wyscout dashboard + scout history. Sits directly under
+     the header strip + bio, directly above the eligibility card. #}
+  <div id="player-passport" class="rounded-xl p-6 mb-6"
+       style="background:var(--surface);border:1px solid var(--border);">
+    <h2 class="text-base font-semibold mb-2" style="color:var(--accent);">Player Passport</h2>
+    <p class="text-sm mb-4" style="color:var(--text-muted);">
+      Two-page printable summary: bio, eligibility, Wyscout career stats,
+      scout-evaluation history. Bilingual EN/AR; A4 portrait.
+    </p>
+    {# Phase 6.1: lightweight loading state via inline JS. The click
+       triggers a file download, so the page never navigates — once the
+       download starts the browser ignores the link's transformed state
+       (no need to revert it; the user will move on or refresh).
+       PDF generation is ~5-10s on Windows due to WeasyPrint/GTK; the
+       button state tells the user the click registered. #}
+    <div class="flex flex-wrap gap-2">
+      {% if current_user.role in ('admin', 'technical_director', 'scout') %}
+        <a href="{{ url_for('passport.player_passport', player_id=player.id) }}"
+           class="passport-btn px-4 py-2 rounded text-sm font-semibold text-white"
+           style="background:var(--brand);"
+           title="PDF generation takes ~5-10 seconds"
+           onclick="this.classList.add('loading'); this.innerHTML='⏳ Generating…';">
+          📄 Download Passport (PDF)
+        </a>
+      {% endif %}
+      <a href="{{ url_for('passport.player_passport', player_id=player.id, public=1) }}"
+         class="passport-btn px-4 py-2 rounded text-sm font-semibold"
+         style="background:var(--bg);color:var(--text);border:1pt solid var(--border);"
+         title="Redacted version — scout identities masked, admin notes stripped. ~5-10s to generate."
+         onclick="this.classList.add('loading'); this.innerHTML='⏳ Generating…';">
+        Public PDF (redacted)
+      </a>
+    </div>
+    <style>
+      .passport-btn.loading {
+        opacity: 0.7;
+        pointer-events: none;   /* swallow double-clicks during generation */
+      }
+    </style>
+  </div>
+
+  {# ── Eligibility card moved up (Phase 5c-2.1) — most committee-relevant
+        info on the page; sits immediately under the header strip + bio,
+        before the Wyscout dashboard. The same include is removed from
+        below the Wyscout panel. ── #}
+  {% include 'evaluations/_eligibility_card.html' %}
+
+  <!-- ── Wyscout Dashboard ── -->
+  {% set ws_summary = get_wyscout_summary(player.id) %}
+  {% set ws_history = get_player_match_history(player.id, 10) %}
+  {% set ws_seasons       = get_player_seasons(player.id) %}
+  {% set ws_radar_seasons = get_player_radar_seasons(player.id, 2) %}
+
+  <div id="wyscout-stats" class="mb-6">
+
+    <!-- Header row -->
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-base font-semibold" style="color:var(--accent);">Wyscout Statistics</h2>
+      {% if current_user.role in ('admin', 'technical_director', 'scout') %}
+        <div class="flex gap-2">
+          <a href="{{ url_for('wyscout.upload', player_id=player.id) }}"
+             class="text-xs px-3 py-1 rounded font-semibold text-white"
+             style="background:var(--brand);">+ Upload Stats</a>
+          <a href="{{ url_for('wyscout.imports', player_id=player.id) }}"
+             class="text-xs px-3 py-1 rounded"
+             style="background:var(--surface);border:1px solid var(--border);color:var(--text-muted);">
+            Import History
+          </a>
+        </div>
+      {% endif %}
+    </div>
+
+    {% if ws_summary %}
+
+      <!-- Summary cards -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        {% set cards = [
+          ('Matches',   ws_summary.matches,                   None),
+          ('Goals',     ws_summary.total_goals,               None),
+          ('Assists',   ws_summary.total_assists,             None),
+          ('G+A / 90',  (ws_summary.goals_p90 + ws_summary.assists_p90)|round(2), None),
+          ('Pass Acc.', ws_summary.pass_accuracy|string + '%', None),
+          ('Duel Win%', ws_summary.duel_win_rate|string + '%', None),
+          ('xG',        ws_summary.total_xg|round(1),         None),
+          ('Minutes',   ws_summary.total_minutes,              None),
+        ] %}
+        {% for label, value, _ in cards %}
+          <div class="rounded-lg p-3 text-center"
+               style="background:var(--surface);border:1px solid var(--border);">
+            <div class="text-xs uppercase tracking-wide mb-1" style="color:var(--text-muted);">{{ label }}</div>
+            <div class="text-xl font-bold" style="color:var(--text);">{{ value }}</div>
+          </div>
+        {% endfor %}
+      </div>
+
+      <!-- Career-by-Season -->
+      {% if ws_seasons|length > 0 %}
+        <div class="rounded-xl mb-4 overflow-hidden"
+             style="background:var(--surface);border:1px solid var(--border);">
+          <div class="px-4 py-3" style="border-bottom:1px solid var(--border);">
+            <h3 class="text-sm font-semibold" style="color:var(--text-muted);">Career by Season</h3>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-xs">
+              <thead>
+                <tr style="border-bottom:1px solid var(--border);">
+                  <th class="px-3 py-2 text-left"  style="color:var(--text-muted);">Season</th>
+                  <th class="px-3 py-2 text-right" style="color:var(--text-muted);">Mt</th>
+                  <th class="px-3 py-2 text-right" style="color:var(--text-muted);">Min</th>
+                  <th class="px-3 py-2 text-right" style="color:var(--text-muted);">G</th>
+                  <th class="px-3 py-2 text-right" style="color:var(--text-muted);">A</th>
+                  <th class="px-3 py-2 text-right" style="color:var(--text-muted);">G+A</th>
+                  <th class="px-3 py-2 text-right" style="color:var(--text-muted);">xG</th>
+                  <th class="px-3 py-2 text-right" style="color:var(--text-muted);">Ps%</th>
+                  <th class="px-3 py-2 text-right" style="color:var(--text-muted);">Duel%</th>
+                  <th class="px-3 py-2 text-right" style="color:var(--text-muted);">Y</th>
+                  <th class="px-3 py-2 text-right" style="color:var(--text-muted);">R</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for s in ws_seasons %}
+                  <tr style="border-bottom:1px solid var(--border);">
+                    <td class="px-3 py-2 font-semibold" style="color:var(--text);">{{ s.season_label }}</td>
+                    <td class="px-3 py-2 text-right" style="color:var(--text);">{{ s.matches }}</td>
+                    <td class="px-3 py-2 text-right" style="color:var(--text-muted);">{{ s.total_minutes }}</td>
+                    <td class="px-3 py-2 text-right" style="color:{% if s.goals %}#22C55E{% else %}var(--text-muted){% endif %};">{{ s.goals }}</td>
+                    <td class="px-3 py-2 text-right" style="color:{% if s.assists %}var(--accent){% else %}var(--text-muted){% endif %};">{{ s.assists }}</td>
+                    <td class="px-3 py-2 text-right font-semibold" style="color:var(--text);">{{ s.goals_plus_assists }}</td>
+                    <td class="px-3 py-2 text-right" style="color:var(--text-muted);">{{ '%.2f'|format(s.xg_total or 0) }}</td>
+                    <td class="px-3 py-2 text-right" style="color:var(--text-muted);">
+                      {% if s.pass_accuracy_pct is not none %}{{ '%.0f'|format(s.pass_accuracy_pct) }}%{% else %}—{% endif %}
+                    </td>
+                    <td class="px-3 py-2 text-right" style="color:var(--text-muted);">
+                      {% if s.duels_won_pct is not none %}{{ '%.0f'|format(s.duels_won_pct) }}%{% else %}—{% endif %}
+                    </td>
+                    <td class="px-3 py-2 text-right" style="color:var(--text-muted);">{{ s.yellow_cards }}</td>
+                    <td class="px-3 py-2 text-right" style="color:var(--text-muted);">{{ s.red_cards }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      {% endif %}
+
+      <!-- Radar + Trends row -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+
+        <!-- Radar chart (multi-season — current solid, prior dashed) -->
+        <div class="rounded-xl p-4"
+             style="background:var(--surface);border:1px solid var(--border);">
+          <h3 class="text-sm font-semibold mb-3" style="color:var(--text-muted);">Performance Radar</h3>
+          <canvas id="radarChart"
+                  data-radar-seasons='{{ ws_radar_seasons | tojson }}'
+                  style="max-height:280px;"></canvas>
+        </div>
+
+        <!-- Trend line charts stacked -->
+        <div class="flex flex-col gap-3">
+          <div class="rounded-xl p-4 flex-1"
+               style="background:var(--surface);border:1px solid var(--border);">
+            <h3 class="text-xs font-semibold mb-2" style="color:var(--text-muted);">Goals + Assists (per match)</h3>
+            <div style="height:72px;position:relative;">
+              <canvas id="trendGoals"></canvas>
+            </div>
+          </div>
+          <div class="rounded-xl p-4 flex-1"
+               style="background:var(--surface);border:1px solid var(--border);">
+            <h3 class="text-xs font-semibold mb-2" style="color:var(--text-muted);">Pass Accuracy %</h3>
+            <div style="height:72px;position:relative;">
+              <canvas id="trendPassing"></canvas>
+            </div>
+          </div>
+          <div class="rounded-xl p-4 flex-1"
+               style="background:var(--surface);border:1px solid var(--border);">
+            <h3 class="text-xs font-semibold mb-2" style="color:var(--text-muted);">Duel Win Rate %</h3>
+            <div style="height:72px;position:relative;">
+              <canvas id="trendDuels"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent matches table -->
+      {% if ws_history %}
+        <div class="rounded-xl overflow-hidden"
+             style="background:var(--surface);border:1px solid var(--border);">
+          <div class="px-4 py-3" style="border-bottom:1px solid var(--border);">
+            <h3 class="text-sm font-semibold" style="color:var(--text-muted);">Recent Matches</h3>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-xs">
+              <thead>
+                <tr style="border-bottom:1px solid var(--border);">
+                  <th class="px-3 py-2 text-left" style="color:var(--text-muted);">Match</th>
+                  <th class="px-3 py-2 text-center" style="color:var(--text-muted);">Pos</th>
+                  <th class="px-3 py-2 text-center" style="color:var(--text-muted);">Min</th>
+                  <th class="px-3 py-2 text-center" style="color:var(--text-muted);">G</th>
+                  <th class="px-3 py-2 text-center" style="color:var(--text-muted);">A</th>
+                  <th class="px-3 py-2 text-center" style="color:var(--text-muted);">Sh</th>
+                  <th class="px-3 py-2 text-center" style="color:var(--text-muted);">Ps</th>
+                  <th class="px-3 py-2 text-center" style="color:var(--text-muted);">Ps%</th>
+                  <th class="px-3 py-2 text-center" style="color:var(--text-muted);">D/W</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for m in ws_history %}
+                  <tr style="border-bottom:1px solid var(--border);">
+                    <td class="px-3 py-2" style="color:var(--text);">
+                      <div class="font-medium">{{ m.match_date.strftime('%d %b %y') if m.match_date else '—' }}</div>
+                      <div class="text-xs truncate max-w-xs" style="color:var(--text-muted);">{{ m.competition or '' }}</div>
+                    </td>
+                    <td class="px-3 py-2 text-center" style="color:var(--text-muted);">{{ m.position_raw or '—' }}</td>
+                    <td class="px-3 py-2 text-center" style="color:var(--text);">{{ m.minutes_played or '—' }}</td>
+                    <td class="px-3 py-2 text-center font-semibold"
+                        style="color:{% if m.goals %}#22C55E{% else %}var(--text-muted){% endif %};">
+                      {{ m.goals or 0 }}
+                    </td>
+                    <td class="px-3 py-2 text-center" style="color:{% if m.assists %}var(--accent){% else %}var(--text-muted){% endif %};">
+                      {{ m.assists or 0 }}
+                    </td>
+                    <td class="px-3 py-2 text-center" style="color:var(--text-muted);">{{ m.shots or 0 }}</td>
+                    <td class="px-3 py-2 text-center" style="color:var(--text-muted);">{{ m.passes or 0 }}</td>
+                    <td class="px-3 py-2 text-center" style="color:var(--text-muted);">
+                      {% if m.passes and m.passes > 0 %}
+                        {{ (m.passes_accurate / m.passes * 100)|round(0)|int }}%
+                      {% else %}—{% endif %}
+                    </td>
+                    <td class="px-3 py-2 text-center" style="color:var(--text-muted);">
+                      {{ m.duels_won or 0 }}/{{ m.duels or 0 }}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      {% endif %}
+
+      <!-- Inject trend data URL for JS (radar is read from canvas data-attr) -->
+      <script>
+        window.BFA = window.BFA || {};
+        window.BFA.trendsUrl = "{{ url_for('wyscout.trends', player_id=player.id) }}";
+      </script>
+
+    {% else %}
+      <!-- No data state -->
+      <div class="rounded-xl p-8 text-center"
+           style="background:var(--surface);border:1px dashed var(--border);">
+        <p class="text-sm mb-3" style="color:var(--text-muted);">
+          No Wyscout stats uploaded yet.
+        </p>
+        {% if current_user.role in ('admin', 'technical_director', 'scout') %}
+          <a href="{{ url_for('wyscout.upload', player_id=player.id) }}"
+             class="text-sm px-4 py-2 rounded font-semibold text-white"
+             style="background:var(--brand);">Upload Wyscout Export</a>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Phase 5 placeholder -->
+  {# ── Committee Evaluations history (Phase 5c-2; Phase 7 NT-visibility) ── #}
+  {% set evals = get_player_evaluations(player.id,
+                                        requesting_user_role=current_user.role) %}
+  <div id="evaluations" class="mb-6">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-base font-semibold" style="color:var(--accent);">
+        Committee Evaluations
+        <span class="text-xs ml-2" style="color:var(--text-muted);">
+          {{ evals | length }} on record
+        </span>
+      </h2>
+      {% if current_user.has_role('admin', 'technical_director', 'scout') %}
+        <a href="{{ url_for('evaluations.evaluate', player_id=player.id) }}"
+           class="text-xs px-3 py-1 rounded font-semibold text-white"
+           style="background:var(--brand);">+ New Evaluation</a>
+      {% endif %}
+    </div>
+
+    {% if evals %}
+      {% for ev in evals %}
+        {% include 'evaluations/_history_card.html' %}
+      {% endfor %}
+    {% else %}
+      <div class="rounded-xl p-8 text-center"
+           style="background:var(--surface);border:1px dashed var(--border);">
+        <p class="text-sm" style="color:var(--text-muted);">
+          No evaluations yet for this player.
+          {% if current_user.has_role('admin', 'technical_director', 'scout') %}
+            Click <strong>New Evaluation</strong> above to start one.
+          {% endif %}
+        </p>
+      </div>
+    {% endif %}
+  </div>
+
+
+</div>
+{% endblock %}

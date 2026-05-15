@@ -1,0 +1,311 @@
+{% extends "base.html" %}
+
+{% block title %}Edit {{ player.full_name }} — BFA Scout{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto px-4 py-8">
+
+  <div class="flex items-center gap-3 mb-6">
+    <a href="{{ url_for('players.player_profile', player_id=player.id) }}"
+       class="text-sm" style="color:var(--text-muted);">&larr; Profile</a>
+    <h1 class="text-2xl font-bold" style="color:var(--text);">Edit Player</h1>
+  </div>
+
+  <div class="flex items-center gap-4 mb-6">
+    <img src="{{ get_player_photo(player.id) }}"
+         alt="{{ player.full_name }}"
+         class="rounded-lg"
+         style="width:80px;height:80px;object-fit:cover;"
+         onerror="this.src='{{ url_for('static', filename='photos/placeholder.svg') }}'">
+    <div>
+      <div class="font-semibold" style="color:var(--text);">{{ player.full_name }}</div>
+      {% if player.full_name_ar %}
+        <div class="text-sm" style="color:var(--text-muted);direction:rtl;">{{ player.full_name_ar }}</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <form method="POST" enctype="multipart/form-data"
+        class="rounded-xl p-6 space-y-5"
+        style="background:var(--surface);border:1px solid var(--border);">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div>
+      <label class="block text-sm font-medium mb-1" style="color:var(--text-muted);">
+        Full Name (English) <span style="color:var(--brand);">*</span>
+      </label>
+      <input type="text" name="full_name"
+             value="{{ form.get('full_name', player.full_name) }}"
+             class="w-full" required>
+      {% if errors.full_name %}
+        <p class="text-xs mt-1" style="color:var(--brand);">{{ errors.full_name }}</p>
+      {% endif %}
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium mb-1" style="color:var(--text-muted);">Full Name (Arabic)</label>
+      <input type="text" name="full_name_ar"
+             value="{{ form.get('full_name_ar', player.full_name_ar or '') }}"
+             dir="rtl" class="w-full">
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium mb-1" style="color:var(--text-muted);">
+        National ID <span style="color:var(--brand);">*</span>
+      </label>
+      <input type="text" name="national_id"
+             value="{{ form.get('national_id', player.national_id) }}"
+             class="w-full" required>
+      {% if errors.national_id %}
+        <p class="text-xs mt-1" style="color:var(--brand);">{{ errors.national_id }}</p>
+      {% endif %}
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium mb-1" style="color:var(--text-muted);">Date of Birth</label>
+        <input type="date" name="dob"
+               value="{{ form.get('dob', (player.dob.isoformat() if player.dob else '')) }}"
+               class="w-full">
+        {% if errors.dob %}
+          <p class="text-xs mt-1" style="color:var(--brand);">{{ errors.dob }}</p>
+        {% endif %}
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1" style="color:var(--text-muted);">Position</label>
+        {% set selected_pos_id = (form.get('primary_position_id')|int if form.get('primary_position_id') else player.primary_position_id) %}
+        <select name="primary_position_id" class="w-full">
+          <option value="">— Select position —</option>
+          {% for group in position_groups %}
+            <optgroup label="{{ group.group_name }}">
+              {% for p in group.positions %}
+                <option value="{{ p.pos_id }}"
+                  {% if selected_pos_id == p.pos_id %}selected{% endif %}>
+                  {{ p.pos_name }}
+                </option>
+              {% endfor %}
+            </optgroup>
+          {% endfor %}
+        </select>
+        {% if errors.primary_position_id %}
+          <p class="text-xs mt-1" style="color:var(--brand);">{{ errors.primary_position_id }}</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {# ── Nationality dropdown (Phase 5c-3) ── #}
+      <div>
+        <label class="block text-sm font-medium mb-1" style="color:var(--text-muted);">Nationality</label>
+        {% set selected_nat = form.get('nationality_code', player.nationality_code or '') %}
+        <select name="nationality_code" class="w-full">
+          <option value="">— Select nationality —</option>
+          {% for code, label in NATIONALITY_CHOICES %}
+            <option value="{{ code }}" {% if selected_nat == code %}selected{% endif %}>
+              {{ label }} ({{ code }})
+            </option>
+          {% endfor %}
+        </select>
+        {% if errors.nationality_code %}
+          <p class="text-xs mt-1" style="color:var(--brand);">{{ errors.nationality_code }}</p>
+        {% endif %}
+      </div>
+
+      {# ── Club dropdown with "Other" escape (Phase 5c-3) ── #}
+      <div x-data='{ showOther: {{ "true" if (not player.club_id and player.current_club) else "false" }} }'>
+        <label class="block text-sm font-medium mb-1" style="color:var(--text-muted);">Current Club</label>
+        {% set selected_club = form.get('club_id', (player.club_id|string if player.club_id else ('other' if player.current_club else ''))) %}
+        <select name="club_id"
+                @change="showOther = ($event.target.value === 'other')"
+                class="w-full mb-2">
+          <option value=""      {% if selected_club == ''    %}selected{% endif %}>— Select club —</option>
+          <optgroup label="Premier League">
+            {% for c in clubs_premier %}
+              <option value="{{ c.id }}" {% if selected_club == c.id|string %}selected{% endif %}>{{ c.name }}</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="First Division">
+            {% for c in clubs_first %}
+              <option value="{{ c.id }}" {% if selected_club == c.id|string %}selected{% endif %}>{{ c.name }}</option>
+            {% endfor %}
+          </optgroup>
+          <option value="other" {% if selected_club == 'other' %}selected{% endif %}>Other (free text)</option>
+        </select>
+        <input type="text" name="current_club_other"
+               x-show="showOther" x-cloak style="display:none;"
+               value="{{ form.get('current_club_other', (player.current_club if not player.club_id else '')) }}"
+               placeholder="Enter club name"
+               class="w-full">
+        {% if errors.club_id %}
+          <p class="text-xs mt-1" style="color:var(--brand);">{{ errors.club_id }}</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium mb-1" style="color:var(--text-muted);">Height (cm)</label>
+        <input type="number" name="height_cm"
+               value="{{ form.get('height_cm', player.height_cm or '') }}"
+               class="w-full" min="100" max="230">
+        {% if errors.height_cm %}
+          <p class="text-xs mt-1" style="color:var(--brand);">{{ errors.height_cm }}</p>
+        {% endif %}
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1" style="color:var(--text-muted);">Weight (kg)</label>
+        <input type="number" name="weight_kg"
+               value="{{ form.get('weight_kg', player.weight_kg or '') }}"
+               class="w-full" min="40" max="150">
+        {% if errors.weight_kg %}
+          <p class="text-xs mt-1" style="color:var(--brand);">{{ errors.weight_kg }}</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium mb-1" style="color:var(--text-muted);">Notes</label>
+      <textarea name="notes" rows="3" class="w-full">{{ form.get('notes', player.notes or '') }}</textarea>
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium mb-1" style="color:var(--text-muted);">Replace Photo</label>
+      <input type="file" name="photo" accept="image/*"
+             class="block w-full text-sm" style="color:var(--text-muted);">
+      <p class="text-xs mt-1" style="color:var(--text-muted);">
+        Leave blank to keep current photo.
+      </p>
+      {% if errors.photo %}
+        <p class="text-xs mt-1" style="color:var(--brand);">{{ errors.photo }}</p>
+      {% endif %}
+    </div>
+
+    {# ── National-team eligibility (admin / TD only — Phase 5c-1, extended in 5c-2) ── #}
+    {% if current_user.has_role('admin', 'technical_director') %}
+      <fieldset class="rounded-lg p-4 mt-2"
+                style="background:var(--bg);border:1px solid var(--border);">
+        <legend class="px-2 text-sm font-semibold" style="color:var(--accent);">
+          National-Team Eligibility (admin)
+        </legend>
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium mb-1" style="color:var(--text-muted);">Status</label>
+            {% set ns = form.get('nationality_status', player.nationality_status or '') %}
+            <select name="nationality_status" class="w-full">
+              <option value=""                    {% if not ns %}selected{% endif %}>— Unknown —</option>
+              <option value="bahraini"            {% if ns == 'bahraini' %}selected{% endif %}>Bahraini citizen · مواطن بحريني</option>
+              <option value="foreign_ancestry"    {% if ns == 'foreign_ancestry' %}selected{% endif %}>Foreign-eligible (ancestry) · مؤهل (نسب)</option>
+              <option value="foreign_residency"   {% if ns == 'foreign_residency' %}selected{% endif %}>Foreign-eligible (residency) · مؤهل (إقامة)</option>
+              <option value="not_eligible"        {% if ns == 'not_eligible' %}selected{% endif %}>Not eligible · غير مؤهل</option>
+              <option value="unknown"             {% if ns == 'unknown' %}selected{% endif %}>Unknown · غير معروف</option>
+            </select>
+            {% if errors.nationality_status %}
+              <p class="text-xs mt-1" style="color:var(--brand);">{{ errors.nationality_status }}</p>
+            {% endif %}
+          </div>
+
+          {# ── Bahrain residency tracking + suggested-date UX (Phase 5c-2) ── #}
+          <div>
+            <label class="block text-sm font-medium mb-1" style="color:var(--text-muted);">
+              Bahrain residency start date
+            </label>
+            {% set rsd_value = form.get('bahrain_residency_start_date', (player.bahrain_residency_start_date.isoformat() if player.bahrain_residency_start_date else '')) %}
+            <input type="date" name="bahrain_residency_start_date" id="residency_start_input"
+                   value="{{ rsd_value }}"
+                   class="w-full">
+            <p class="text-xs mt-1" style="color:var(--text-muted);">
+              For residency-route eligibility. The platform suggests an
+              eligible-from date {{ RESIDENCY_YEARS_REQUIRED }} years later (FIFA Article 5 default).
+            </p>
+            {% if errors.bahrain_residency_start_date %}
+              <p class="text-xs mt-1" style="color:var(--brand);">{{ errors.bahrain_residency_start_date }}</p>
+            {% endif %}
+
+            {% if player.bahrain_residency_start_date %}
+              {% set suggested = compute_suggested_eligibility(player.bahrain_residency_start_date) %}
+              {% if suggested %}
+                <p class="text-xs mt-2" style="color:var(--text-muted);">
+                  Suggested eligible-from: <span class="font-mono" style="color:var(--text);">{{ suggested.strftime('%Y-%m-%d') }}</span>
+                  <span class="cursor-help" style="color:var(--accent);"
+                        title="Based on {{ RESIDENCY_YEARS_REQUIRED }}-year continuous residence (FIFA Article 5 default — confirm with eligibility advisor)">ⓘ</span>
+                  <button type="button"
+                          onclick="document.getElementById('eligible_from_date_input').value = '{{ suggested.strftime('%Y-%m-%d') }}'; return false;"
+                          class="ml-2 underline text-xs"
+                          style="color:var(--accent);">Use suggestion</button>
+                </p>
+              {% endif %}
+            {% endif %}
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-1" style="color:var(--text-muted);">Eligible from</label>
+            <input type="date" name="eligible_from_date" id="eligible_from_date_input"
+                   value="{{ form.get('eligible_from_date', (player.eligible_from_date.isoformat() if player.eligible_from_date else '')) }}"
+                   class="w-full">
+            <p class="text-xs mt-1" style="color:var(--text-muted);">
+              When the player becomes eligible for NT selection. Leave blank if unknown.
+            </p>
+            {% if errors.eligible_from_date %}
+              <p class="text-xs mt-1" style="color:var(--brand);">{{ errors.eligible_from_date }}</p>
+            {% endif %}
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-1" style="color:var(--text-muted);">Residency notes</label>
+            <textarea name="bahrain_residency_notes" rows="2"
+                      placeholder="Continuous-residence dates, gaps, supporting documents…"
+                      class="w-full">{{ form.get('bahrain_residency_notes', player.bahrain_residency_notes or '') }}</textarea>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-1" style="color:var(--text-muted);">Eligibility notes (general)</label>
+            <textarea name="eligibility_notes_admin" rows="3"
+                      class="w-full">{{ form.get('eligibility_notes_admin', player.eligibility_notes_admin or '') }}</textarea>
+          </div>
+        </div>
+      </fieldset>
+    {% endif %}
+
+    {# ── Orphan-scores confirm modal (Phase 5c-2) ── #}
+    {% if orphan_confirm %}
+      <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+        <div class="rounded-xl p-6 max-w-md w-full"
+             style="background:var(--surface);border:1px solid var(--border);">
+          <h3 class="font-bold text-lg mb-3" style="color:var(--text);">Position change will orphan scores</h3>
+          <p class="text-sm mb-4" style="color:var(--text-muted);">
+            <strong style="color:var(--text);">{{ orphan_count }}</strong> existing
+            evaluation score{{ '' if orphan_count == 1 else 's' }} reference criteria
+            that don't apply to the new position group.
+          </p>
+          <p class="text-sm mb-5" style="color:var(--text-muted);">
+            <strong style="color:var(--brand);">Delete</strong> removes the orphan rows
+            from <code>evaluation_scores</code>. <strong>Keep</strong> leaves them in
+            place as historical record (they'll just stop appearing on the form).
+          </p>
+          <div class="flex items-center justify-end gap-3">
+            <button type="submit" name="orphan_decision" value="keep"
+                    class="px-4 py-2 rounded text-sm font-semibold"
+                    style="background:var(--surface);border:1px solid var(--border);color:var(--text);">
+              Keep as historical
+            </button>
+            <button type="submit" name="orphan_decision" value="delete"
+                    class="px-4 py-2 rounded text-sm font-semibold text-white"
+                    style="background:var(--brand);">
+              Delete {{ orphan_count }} score{{ '' if orphan_count == 1 else 's' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+
+    <div class="flex items-center gap-3 pt-2">
+      <button type="submit"
+              class="px-5 py-2 rounded font-semibold text-sm text-white"
+              style="background:var(--brand);">Save Changes</button>
+      <a href="{{ url_for('players.player_profile', player_id=player.id) }}"
+         class="text-sm" style="color:var(--text-muted);">Cancel</a>
+    </div>
+
+  </form>
+</div>
+{% endblock %}

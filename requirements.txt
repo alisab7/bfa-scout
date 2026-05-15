@@ -2,4 +2,18 @@ Flask==3.1.0
 psycopg2-binary==2.9.10
 python-dotenv==1.1.0
 Flask-Login==0.6.3
+Flask-WTF==1.2.1
+email-validator==2.1.0
 gunicorn==23.0.0
+Pillow
+pandas>=2.0
+openpyxl>=3.1
+# Phase 6: Player Passport PDF. Requires GTK runtime on Windows
+# (Pango/GLib/cairo native DLLs); see GTK3-Runtime-Win64 installer.
+weasyprint>=68.0
+# Phase 6 E2E uses pypdf for text-extraction-based redaction assertions.
+pypdf>=6.0
+# Phase 8: S3-compatible client for DigitalOcean Spaces photo storage
+# (app/storage.py). Only the Spaces code path imports it; dev/local
+# mode never does, so a dev box without it still runs fine.
+boto3>=1.34

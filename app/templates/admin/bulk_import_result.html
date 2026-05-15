@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}Bulk Import Complete — BFA Scout{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 py-8">
+
+  <h1 class="text-2xl font-bold mb-2" style="color:var(--text);">
+    Bulk Import Complete
+  </h1>
+  <p class="text-sm mb-6" style="color:var(--text-muted);">
+    Source file: <code>{{ summary.file_name }}</code>
+  </p>
+
+  <div class="rounded-xl p-6 mb-6"
+       style="background:var(--surface);border:1px solid var(--border);">
+    <dl class="grid grid-cols-2 gap-4 text-sm">
+      <div>
+        <dt class="text-xs uppercase tracking-wide" style="color:var(--text-muted);">
+          Total rows
+        </dt>
+        <dd class="text-lg font-bold" style="color:var(--text);">{{ summary.total }}</dd>
+      </div>
+      <div>
+        <dt class="text-xs uppercase tracking-wide" style="color:var(--text-muted);">
+          Created
+        </dt>
+        <dd class="text-lg font-bold bulk-create">{{ summary.created }}</dd>
+      </div>
+      <div>
+        <dt class="text-xs uppercase tracking-wide" style="color:var(--text-muted);">
+          Updated
+        </dt>
+        <dd class="text-lg font-bold bulk-update">{{ summary.updated }}</dd>
+      </div>
+      <div>
+        <dt class="text-xs uppercase tracking-wide" style="color:var(--text-muted);">
+          Skipped (duplicates)
+        </dt>
+        <dd class="text-lg font-bold bulk-dup">{{ summary.skipped }}</dd>
+      </div>
+      <div>
+        <dt class="text-xs uppercase tracking-wide" style="color:var(--text-muted);">
+          Invalid
+        </dt>
+        <dd class="text-lg font-bold bulk-invalid">{{ summary.invalid }}</dd>
+      </div>
+    </dl>
+  </div>
+
+  <div class="flex gap-2">
+    <a href="{{ url_for('players.list_players') }}"
+       class="px-4 py-2 rounded text-sm font-semibold text-white"
+       style="background:var(--brand);">
+      View players
+    </a>
+    <a href="{{ url_for('admin.bulk_import_index') }}"
+       class="px-4 py-2 rounded text-sm font-semibold"
+       style="background:var(--bg);color:var(--text);border:1px solid var(--border);">
+      Import another file
+    </a>
+  </div>
+
+</div>
+{% endblock %}

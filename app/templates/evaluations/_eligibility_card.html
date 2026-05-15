@@ -1,0 +1,73 @@
+{# Eligibility status + latest-3 NT readiness summary (Phase 5c-2).
+   Vars in scope: player (dict).
+#}
+{% set elig = compute_eligibility_status(player) %}
+<div class="rounded-xl p-6 mb-6"
+     style="background:var(--surface);border:1px solid var(--border);">
+  <h2 class="text-base font-semibold mb-4" style="color:var(--accent);">National-Team Eligibility</h2>
+
+  <div class="flex items-baseline gap-3 mb-2">
+    <span class="text-2xl">{{ elig.icon }}</span>
+    <span class="text-lg font-medium" style="color:var(--text);">{{ elig.label }}</span>
+    {# Phase 6.2.2 — Item 2: show Bahrain flag inline for players who are
+       eligible right now (Bahraini citizen, foreign-ancestry, or residency
+       complete).  `get_flag_svg` reads app/static/flags/bh.svg. #}
+    {% if elig.is_eligible_now %}
+      {% set bh_flag = get_flag_svg('BHR') %}
+      {% if bh_flag %}
+        <span class="inline-block align-middle ml-1"
+              style="width:24px;height:18px;line-height:0;"
+              title="Bahrain National Team eligible">{{ bh_flag | safe }}</span>
+      {% endif %}
+    {% endif %}
+  </div>
+
+  {% if elig.note %}
+    <p class="text-sm mb-2" style="color:var(--text-muted);">{{ elig.note }}</p>
+  {% endif %}
+
+  {# Phase 6.2.2 — Item 1: age at eligibility (foreign_residency players
+     with a future elig date + known DOB only). #}
+  {% if elig.age_at_eligibility is not none %}
+    <p class="text-sm mb-2" style="color:var(--text-muted);">
+      Age at eligibility: <strong style="color:var(--text);">{{ elig.age_at_eligibility }}</strong>
+    </p>
+  {% endif %}
+
+  {# Route line (Phase 5c-2.1) — supplementary to the icon-line, never
+     duplicating the eligibility verdict. Hidden when status is null/unknown. #}
+  {% if player.nationality_status and player.nationality_status not in ('unknown', None) %}
+    <p class="text-xs mt-3" style="color:var(--text-muted);">
+      Route:
+      <span style="color:var(--text);">
+        {{ NATIONALITY_ROUTE_LABEL_EN.get(player.nationality_status,
+                                          player.nationality_status | replace('_', ' ') | title) }}
+      </span>
+      {% set ar_label = ELIGIBILITY_STATUS_LABEL_AR.get(player.nationality_status) %}
+      {% if ar_label %}
+        · <span style="direction:rtl;">{{ ar_label }}</span>
+      {% endif %}
+    </p>
+  {% endif %}
+
+  {# Latest-N NT readiness summary line (Phase 7: role-filtered) #}
+  {% set summary = nt_readiness_summary(player.id, 3,
+                                        requesting_user_role=current_user.role) %}
+  {% if summary.total > 0 %}
+    <p class="text-xs mt-3 pt-3" style="color:var(--text-muted);border-top:1px solid var(--border);">
+      Latest {{ summary.total }} NT-readiness vote{{ '' if summary.total == 1 else 's' }}:
+      {% for level, count in summary.breakdown.items() %}
+        <span style="color:var(--text);">{{ level }}</span> ({{ count }}){% if not loop.last %}, {% endif %}
+      {% endfor %}
+    </p>
+  {% endif %}
+
+  {# Bahrain residency reference line — kept for completeness, since the
+     icon-line note already mentions the suggested date when residency is
+     the active route. Shows even when route is something else. #}
+  {% if player.bahrain_residency_start_date %}
+    <p class="text-xs mt-2" style="color:var(--text-muted);">
+      Bahrain residency from {{ player.bahrain_residency_start_date.strftime('%Y-%m-%d') }}.
+    </p>
+  {% endif %}
+</div>

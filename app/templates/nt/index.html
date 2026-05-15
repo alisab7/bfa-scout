@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}National Team Workspace — BFA Scout{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 py-8">
+  <h1 class="text-2xl font-bold mb-2" style="color:var(--text);">National Team Workspace</h1>
+  <p class="text-sm mb-6" style="color:var(--text-muted);">
+    BPL-eligible squad candidates. Click a player to view their profile;
+    use the standard evaluation form to record NT scouting notes.
+    Evaluations created here are tagged
+    <span class="role-badge role-nt">NT</span>
+    and are hidden from the scout role.
+  </p>
+
+  {% if squad %}
+    {% include 'nt/_squad_table.html' %}
+  {% else %}
+    <div class="rounded-xl p-6"
+         style="background:var(--surface);border:1px solid var(--border);">
+      <p class="text-sm" style="color:var(--text-muted);">
+        No NT-eligible players in the database yet. As players gain
+        Bahraini status (or pass the 5-year residency window), they'll
+        appear here automatically.
+      </p>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

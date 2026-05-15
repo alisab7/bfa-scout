@@ -1,0 +1,157 @@
+{# Scout assessment section for the comparison view (Phase 5d, patched).
+   Vars in scope: data.players (list with .scout_data + .eval_count),
+                  scout_mode ('latest' | 'averaged'),
+                  grouped_criteria (pre-grouped by category),
+                  all_criteria (flat union, used for the drilldown count),
+                  any_player_has_scout_data (bool).
+
+   The wrapping <section id="scout-section"> lives in this template so the
+   HTMX partial route can swap the same outer element via outerHTML.
+   Phase 7: latest-mode evaluator line carries a role badge.
+#}
+{% from '_macros/evaluation_role_badge.html' import evaluation_role_badge %}
+<section id="scout-section" class="rounded-xl p-6 mt-6"
+         style="background:var(--surface);border:1px solid var(--border);">
+  <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+    <div>
+      <h2 class="text-base font-semibold" style="color:var(--accent);">Scout Assessment</h2>
+      <p class="text-xs mt-0.5" style="color:var(--text-muted);">
+        Category averages, NT readiness vote, recommendation —
+        {% if scout_mode == 'latest' %}most recent submitted/locked evaluation per player.
+        {% else %}averaged across all submitted/locked, non-deleted evaluations per player.
+        {% endif %}
+      </p>
+    </div>
+    <div class="flex gap-1 text-xs">
+      {# HTMX-driven toggle (Phase 5d-patch) — swaps the section in place,
+         pushes URL via hx-push-url so back-button restores prior mode. #}
+      <a href="?{{ urlencode_with('scout_mode', 'latest') }}"
+         hx-get="{{ url_for('players.compare_scout_section') }}?{{ urlencode_with('scout_mode', 'latest') }}"
+         hx-target="#scout-section"
+         hx-swap="outerHTML"
+         hx-push-url="?{{ urlencode_with('scout_mode', 'latest') }}"
+         class="px-3 py-1 rounded font-semibold"
+         style="background:{% if scout_mode == 'latest' %}var(--brand);color:#fff{% else %}var(--bg);color:var(--text-muted);border:1px solid var(--border){% endif %};">
+        Latest
+      </a>
+      <a href="?{{ urlencode_with('scout_mode', 'averaged') }}"
+         hx-get="{{ url_for('players.compare_scout_section') }}?{{ urlencode_with('scout_mode', 'averaged') }}"
+         hx-target="#scout-section"
+         hx-swap="outerHTML"
+         hx-push-url="?{{ urlencode_with('scout_mode', 'averaged') }}"
+         class="px-3 py-1 rounded font-semibold"
+         style="background:{% if scout_mode == 'averaged' %}var(--brand);color:#fff{% else %}var(--bg);color:var(--text-muted);border:1px solid var(--border){% endif %};">
+        Averaged
+      </a>
+    </div>
+  </div>
+
+  {# ── Headline cards: one column per player ── #}
+  <div class="grid gap-4"
+       style="grid-template-columns: repeat({{ data.players | length }}, minmax(0, 1fr));">
+    {% for p in data.players %}
+      <div class="rounded-lg p-4"
+           style="background:var(--bg);border:1px solid var(--border);">
+        <h3 class="font-semibold text-sm mb-1" style="color:var(--text);">
+          {{ p.full_name.split(' ')[0] }}
+        </h3>
+
+        {% if p.scout_data %}
+          <p class="text-xs mb-3" style="color:var(--text-muted);">
+            {% if scout_mode == 'latest' %}
+              Latest by {{ p.scout_data.evaluator_name }}{{ evaluation_role_badge(p.scout_data.created_by_role) }}
+              {% if p.scout_data.submitted_at %}
+                · {{ p.scout_data.submitted_at.strftime('%Y-%m-%d') }}
+              {% endif %}
+              {% if p.scout_data.match_label %}
+                · {{ p.scout_data.match_label }}
+              {% endif %}
+            {% else %}
+              Averaged across {{ p.eval_count }} evaluation{{ '' if p.eval_count == 1 else 's' }}
+            {% endif %}
+          </p>
+
+          {# Category averages — show all 4 in fixed order; — for missing #}
+          <div class="space-y-1 mb-3">
+            {% for cat_code in ['TECH', 'TACT', 'PHYS', 'MENT'] %}
+              {% set avg = p.scout_data.category_averages.get(cat_code) %}
+              <div class="flex justify-between text-xs">
+                <span style="color:var(--text);">{{ CATEGORY_LABEL_EN.get(cat_code) }}</span>
+                <span class="font-mono"
+                      style="color:{% if avg is not none %}var(--brand);font-weight:700{% else %}var(--text-muted){% endif %};">
+                  {% if avg is not none %}{{ '%.1f'|format(avg) }}{% else %}—{% endif %}
+                </span>
+              </div>
+            {% endfor %}
+          </div>
+
+          {# NT-readiness + recommendation badges #}
+          <div class="flex gap-2 flex-wrap">
+            {% if p.scout_data.nt_readiness_level %}
+              <span class="px-2 py-1 rounded text-xs font-semibold"
+                    style="background:var(--accent);color:#fff;"
+                    title="{{ NT_LEVEL_LABEL_AR.get(p.scout_data.nt_readiness_level, '') }}">
+                {{ NT_LEVEL_LABEL_EN.get(p.scout_data.nt_readiness_level, p.scout_data.nt_readiness_level) }}
+              </span>
+            {% endif %}
+            {% if p.scout_data.recommendation %}
+              <span class="px-2 py-1 rounded text-xs font-semibold"
+                    style="background:var(--brand);color:#fff;"
+                    title="{{ RECOMMENDATION_LABEL_AR.get(p.scout_data.recommendation, '') }}">
+                {{ RECOMMENDATION_LABEL_EN.get(p.scout_data.recommendation, p.scout_data.recommendation) }}
+              </span>
+            {% endif %}
+          </div>
+
+          {# Latest-mode summary snippet #}
+          {% if scout_mode == 'latest' and p.scout_data.summary %}
+            <p class="text-xs mt-3 pt-3" style="color:var(--text-muted);border-top:1px solid var(--border);">
+              {{ p.scout_data.summary[:200] }}{% if p.scout_data.summary|length > 200 %}…{% endif %}
+            </p>
+          {% endif %}
+        {% else %}
+          <p class="text-xs" style="color:var(--text-muted);">No evaluations yet.</p>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+
+  {# ── Phase 5d-1: Category-averages radar (4 axes: TECH/TACT/PHYS/MENT) ──
+     Always rendered when at least one player has evaluations. Mirrors the
+     numbers in the headline cards but lets the eye spot polygon-shape
+     differences (e.g. "Ali leans Technical, Hamad leans Physical").
+     Lives inside #scout-section so the htmx:afterSwap re-init in
+     scout_radars.js picks it up on Latest ↔ Averaged toggle. #}
+  {% if any_player_has_scout_data and scout_radar_data %}
+    <div class="rounded-lg p-4 mt-4"
+         style="background:var(--bg);border:1px solid var(--border);">
+      <h3 class="text-sm font-semibold mb-3" style="color:var(--text-muted);">
+        Category averages — radar comparison
+      </h3>
+      <div style="position:relative;height:340px;">
+        <canvas data-scout-radar='{{ scout_radar_data.category | tojson }}'></canvas>
+      </div>
+    </div>
+  {% endif %}
+
+  {# ── Per-criterion drill-down (collapsible by category) ── #}
+  {% if any_player_has_scout_data and grouped_criteria %}
+    <details class="mt-4 rounded-lg"
+             style="background:var(--bg);border:1px solid var(--border);">
+      <summary class="px-4 py-3 cursor-pointer font-semibold text-sm flex justify-between items-center"
+               style="color:var(--text);">
+        <span>Detailed criteria comparison</span>
+        <span class="text-xs" style="color:var(--text-muted);">
+          {{ all_criteria | length }} criteria across {{ data.players | length }} players
+        </span>
+      </summary>
+      <div class="px-4 pb-4">
+        {% include 'players/_compare_scout_drilldown.html' %}
+      </div>
+    </details>
+  {% elif not any_player_has_scout_data %}
+    <p class="text-xs mt-4" style="color:var(--text-muted);">
+      No scout data available for any selected player.
+    </p>
+  {% endif %}
+</section>

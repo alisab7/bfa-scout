@@ -1,0 +1,29 @@
+{# Soft warning when scout tries to submit fewer than 5 ratings (Phase 5c-2).
+   Toggled by Alpine `lowRatingWarning` from evalForm() in form.html.
+   Non-blocking: scout can confirm anyway, or go back and rate more. #}
+<div x-show="lowRatingWarning"
+     x-cloak
+     style="display:none;"
+     class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+  <div class="rounded-xl p-6 max-w-md w-full"
+       style="background:var(--surface);border:1px solid var(--border);">
+    <h3 class="font-bold text-lg mb-3" style="color:var(--text);">Submit with limited ratings?</h3>
+    <p class="text-sm mb-3" style="color:var(--text-muted);">
+      You've rated only <strong x-text="lowRatingCount" style="color:var(--brand);"></strong>
+      criteria (N/A doesn't count). Most evaluations have at least 5 ratings.
+    </p>
+    <p class="text-sm mb-5" style="color:var(--text-muted);">
+      You can submit anyway — partial evaluations are allowed — or go back
+      and rate more criteria first.
+    </p>
+    <div class="flex items-center justify-end gap-3">
+      <button type="button" @click="lowRatingWarning = false"
+              class="text-sm" style="color:var(--text-muted);">Go back &amp; rate more</button>
+      <button type="button" @click="actuallySubmit()"
+              class="px-4 py-2 rounded text-sm font-semibold text-white"
+              style="background:var(--brand);">
+        Submit anyway
+      </button>
+    </div>
+  </div>
+</div>

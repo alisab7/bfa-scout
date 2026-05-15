@@ -1,0 +1,32 @@
+{# Soft-delete confirm modal (Phase 5c-3).
+   Toggled by Alpine `deleteModal` on the parent _history_card scope.
+   Posts to /evaluations/<id>/delete with a `reason` field (min 10 chars).
+   The same constraint is enforced server-side AND by the DB CHECK. #}
+<div x-show="deleteModal" x-cloak style="display:none;"
+     class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+  <div class="rounded-xl p-6 max-w-md w-full"
+       style="background:var(--surface);border:1px solid var(--border);">
+    <h3 class="font-bold text-lg mb-3" style="color:var(--text);">Delete evaluation #{{ ev.id }}?</h3>
+    <p class="text-sm mb-4" style="color:var(--text-muted);">
+      The evaluation will be hidden from all views. An admin can restore it
+      later from the recovery page.
+    </p>
+    <form method="POST" action="{{ url_for('evaluations.delete_evaluation', eval_id=ev.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="block text-xs uppercase tracking-wide mb-1" style="color:var(--text-muted);">
+        Reason for deletion (min 10 chars)
+      </label>
+      <textarea name="reason" rows="3" minlength="10" required
+                placeholder="Why are you deleting this?"
+                class="w-full px-3 py-2 rounded text-sm"
+                style="background:var(--bg);border:1px solid var(--border);color:var(--text);"></textarea>
+      <div class="flex items-center justify-end gap-3 mt-4">
+        <button type="button" @click="deleteModal = false"
+                class="text-sm" style="color:var(--text-muted);">Cancel</button>
+        <button type="submit"
+                class="px-4 py-2 rounded text-sm font-semibold text-white"
+                style="background:var(--brand);">Delete</button>
+      </div>
+    </form>
+  </div>
+</div>

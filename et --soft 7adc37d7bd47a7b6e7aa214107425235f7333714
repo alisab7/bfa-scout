@@ -1,0 +1,30 @@
+[33m482dfb7[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m Remove real credentials from env example
+[33m3e7a1e4[m Phase 0-8: project scaffold + production deployment
+[33m8d1069a[m Phase 8: Production deploy infrastructure (Docker + DigitalOcean + Cloudflare + Spaces + backup cron)
+[33m903e7c8[m Phase 9: Bulk player import + Phase 7.1 widening (TD on /nt, viewer filtered from NT evals)
+[33m96b13f8[m Phase 7: NT staff role + /nt workspace + evaluation visibility invariant (NT evals hidden from scouts)
+[33mc536a2b[m Phase 6.2.3: Propagate eligibility + nationality flag display across all surfaces (home, list, grid, compare, search, evaluation form)
+[33mbc1d430[m Phase 6.2.1: Remove admin notes from passport and user-facing displays (DB preserved)
+[33m97c7f7c[m Phase 6.2: PDF Page 1 layout fix (stats + radar side-by-side, decorative wave removed, passport button moved below header)
+[33ma8f19ed[m Phase 6.1: PDF polish (radar layout, eligibility wording, flag SVG, season subtitle, loading indicator)
+[33m848735a[m Phase 6: Player Passport PDF (bio + eligibility + Wyscout + scout evaluations, bilingual EN/AR, public/full modes)
+[33mb98fb7a[m Phase 4.2: Season column on wyscout_match_stats (backfill + ingest update)
+[33me5011d9[m Phase 5d-1: Scout-assessment radars (1 category-level + 4 per-category, HTMX-aware re-init)
+[33m75ad2f7[m[33m ([m[1;32mclaude/jovial-cori-200ad3[m[33m)[m Phase 5d: Scout dimension on comparison page (category averages, per-criterion drill-down, latest/averaged toggle, match label, HTMX swap)
+[33m56a8201[m Phase 5d: Scout dimension on comparison page (category averages, per-criterion drill-down, latest/averaged toggle, match label, HTMX swap)
+[33m956a59c[m Phase 5c-3: Nationality dropdown, clubs dropdown, soft-delete evaluations, bio counts, card nationality, input theming
+[33mf1e7c48[m Phase 5c-2.1 patch: eligibility card priority order, score sections, players list eligibility column + filter
+[33m6fb7265[m Phase 5c-2: History cards, lock workflow, admin edit, eligibility card, residency tracking, mobile polish, Arabic
+[33m28073f0[m Phase 5c-1.1: Tri-state slider (untouched/rated/N/A) with reversible reset and N/A toggle
+[33mcb50d3d[m Phase 5c-1: Evaluation form (matches selection, dynamic criteria, draft/submit, eligibility admin) + form-submit fix
+[33m22e603d[m Phase 5c-1: Evaluation form (matches selection, dynamic criteria, draft/submit, eligibility admin)
+[33m67dfe50[m Phase 5b: matches table + Wyscout auto-link + compare picker fix
+[33m3861fef[m Phase 5b: matches table + Wyscout auto-link + backfill
+[33mf91629d[m docs: Phase 5 criteria taxonomy design history
+[33mba56186[m Phase 5a: criteria reseed (55 items, 303 mappings) + NT readiness columns
+[33m56b82b7[m Phase 4.1: Season aggregations + multi-player comparison
+[33m0d580a8[m Phase 4: Wyscout import + dashboard (parser fixed, UPSERT verified)
+[33m34eecff[m Phase 3: Players module — CRUD, photo upload, HTMX search (Claude Code patches applied)
+[33m920da59[m Phase 1: Auth & RBAC — Flask-Login, 4 roles, user CRUD (polish deferred to Phase 8)
+[33mca04244[m Phase 1: Auth & RBAC — Flask-Login, 4 roles, user CRUD (polish deferred to pre-deploy)
+[33m7adc37d[m Phase 0: project scaffold + cleanup pass

@@ -1,0 +1,387 @@
+/* ──────────────────────────────────────────────────────────────
+   Player Passport print stylesheet (Phase 6).
+
+   Two-page A4 portrait, 20mm margins. BFA red + gold accents.
+   System font fallback (Inter not bundled locally; WeasyPrint picks
+   "Inter" if installed system-wide otherwise a sans serif).
+   ────────────────────────────────────────────────────────────── */
+
+@page {
+  size: A4 portrait;
+  margin: 20mm;
+}
+
+body {
+  font-family: 'Inter', 'Segoe UI', -apple-system, sans-serif;
+  color: #1A1A1A;
+  line-height: 1.4;
+  font-size: 10.5pt;
+}
+
+/* Arabic — relies on system Arabic font for RTL shaping. Cairo is the
+   ideal target if installed system-wide; falls back to "Segoe UI" on
+   Windows which has good Arabic shaping built in. */
+.ar-name,
+[dir="rtl"] {
+  font-family: 'Cairo', 'Segoe UI', 'Arial', sans-serif;
+}
+
+h1 {
+  color: #C8102E;
+  font-size: 18pt;
+  margin: 0;
+  letter-spacing: 0.2pt;
+}
+h2 {
+  color: #C8102E;
+  font-size: 14pt;
+  margin: 0 0 2pt 0;
+}
+h2.latin-name { font-weight: 700; }
+h2.ar-name    { font-weight: 600; font-size: 13pt; color: #4A4A4A; margin-bottom: 4pt; }
+
+h3 {
+  color: #C8102E;
+  font-size: 11.5pt;
+  font-weight: 700;
+  margin: 10pt 0 4pt 0;
+  /* 6.2: removed `border-bottom: 1pt solid #B5924C`. At 1pt thin
+     solid rules sit on subpixel boundaries in many PDF viewers
+     (Edge/Chrome built-in especially) and rasterize as wavy/dithered
+     gradients — Ali reported this as a "decorative wave" between
+     sections. The red bold heading alone is plenty of visual
+     separation; the page header's 2pt red rule (robust at 2pt) is
+     the only horizontal line on the page now. */
+}
+h3 .count {
+  color: #666;
+  font-size: 9pt;
+  font-weight: 400;
+}
+
+h4 {
+  color: #1A1A1A;
+  font-size: 10pt;
+  margin: 10pt 0 4pt 0;
+  font-weight: 600;
+}
+
+/* ── Header ─────────────────────────────────────────────────── */
+.passport-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 10pt;
+  padding-bottom: 6pt;
+  border-bottom: 2pt solid #C8102E;
+}
+.brand {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.brand-mark {
+  display: inline-block;
+  background: #C8102E;
+  color: #fff;
+  font-weight: 800;
+  font-size: 13pt;
+  padding: 2pt 6pt;
+  letter-spacing: 1pt;
+}
+.brand-text {
+  font-size: 8pt;
+  color: #666;
+  margin-top: 2pt;
+  letter-spacing: 0.5pt;
+}
+.badge-public {
+  display: inline-block;
+  background: #B5924C;
+  color: #fff;
+  font-size: 7pt;
+  font-weight: 700;
+  padding: 1pt 5pt;
+  border-radius: 2pt;
+  vertical-align: middle;
+  letter-spacing: 0.5pt;
+}
+
+/* ── Bio ────────────────────────────────────────────────────── */
+.bio {
+  display: flex;
+  gap: 14pt;
+  margin: 8pt 0 10pt 0;          /* 6.1: tighter */
+  align-items: flex-start;
+}
+.player-photo {
+  width: 84pt;                   /* 6.1: 100→84 saves vertical room */
+  height: 84pt;
+  object-fit: cover;
+  border-radius: 4pt;
+  border: 2pt solid #C8102E;
+  flex-shrink: 0;
+}
+.player-photo.placeholder {
+  background: #F0F0F0;
+  color: #C8102E;
+  font-size: 36pt;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.bio-text { flex: 1; min-width: 0; }
+.bio-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3pt 12pt;
+  margin-top: 6pt;
+}
+.bio-k {
+  color: #666;
+  font-size: 8.5pt;
+  text-transform: uppercase;
+  letter-spacing: 0.4pt;
+  display: block;
+}
+.bio-v {
+  font-weight: 600;
+  font-size: 10.5pt;
+}
+
+/* Phase 6.1: inline SVG flag next to nationality label. Sized in pt so
+   the layout doesn't change at print scale. Aspect ratio 4:3 (matches
+   the flag-icons "4x3" set we vendor). */
+.flag-inline {
+  display: inline-block;
+  width: 18pt;
+  height: 13.5pt;
+  margin-left: 4pt;
+  vertical-align: middle;
+  line-height: 0;       /* prevent text-baseline whitespace under the SVG */
+}
+.flag-inline svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border: 0.4pt solid #BBB;
+  border-radius: 1pt;
+}
+
+/* ── Eligibility ────────────────────────────────────────────── */
+.elig-row {
+  display: flex;
+  align-items: center;
+  gap: 6pt;
+  margin: 2pt 0;
+}
+.elig-icon { font-size: 14pt; line-height: 1; }
+.elig-label {
+  font-weight: 700;
+  font-size: 11pt;
+  color: #1A1A1A;
+}
+.elig-note {
+  color: #555;
+  font-size: 9pt;
+  margin: 3pt 0 0 0;
+}
+/* Phase 6.2.2 Item 1: age at eligibility — only rendered for
+   foreign_residency players with a future elig date + known DOB. */
+.elig-age {
+  color: #555;
+  font-size: 9pt;
+  margin: 3pt 0 0 0;
+}
+.elig-age strong {
+  color: #1A1A1A;
+  font-weight: 700;
+}
+/* Phase 6.2.1: removed `.elig-admin-note` rule — was only used by the
+   two admin-note blocks in passport.html that no longer render. */
+
+/* ── Wyscout ────────────────────────────────────────────────── */
+/* Phase 6.2: side-by-side layout. The h3 heading + stats-subtitle
+   span the full row width (they sit OUTSIDE .wyscout-grid in the
+   template). Below them, .wyscout-grid is a flex row that puts the
+   stats table on the left (55%) and the radar on the right (45%).
+   page-break-inside: avoid keeps stats+radar together on page 1
+   without an explicit page-break div. */
+.wyscout-grid {
+  display: flex;
+  flex-direction: row;
+  gap: 12pt;
+  align-items: flex-start;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+.stats-subtitle {
+  font-size: 9.5pt;
+  color: #666;
+  font-style: italic;
+  margin: 0 0 6pt 0;
+}
+.stats-table {
+  flex: 0 0 55%;                 /* Stats column gets ~55% */
+}
+.stats-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.stats-table th {
+  text-align: left;
+  padding: 2pt 8pt 2pt 0;
+  color: #555;
+  font-weight: 500;
+  font-size: 9.5pt;
+}
+.stats-table td {
+  padding: 2pt 0;
+  font-weight: 700;
+  color: #C8102E;
+  font-size: 10pt;
+  text-align: right;
+}
+.radar {
+  flex: 0 0 45%;                 /* Radar column gets ~45% */
+  text-align: center;
+}
+.radar svg {
+  /* 6.2: width-driven sizing now. The radar fills its column width;
+     SVG viewBox handles the aspect ratio. height: auto keeps the
+     1:1 viewBox proportion. The viewBox itself was tightened in
+     radar_svg.py (360→320, margin 22%→18%) so axis labels still
+     have headroom inside the narrower column. */
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+}
+
+.empty-state {
+  color: #888;
+  font-style: italic;
+  margin: 6pt 0;
+}
+
+/* ── Scout section ─────────────────────────────────────────── */
+/* 6.1: keep scout panels intact when they cross a page boundary;
+   prevents the awkward "half a panel here, the rest there" split. */
+.scout-section, .scout-empty {
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+.latest-eval, .history {
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+.latest-eval {
+  background: #FAFAFA;
+  border-left: 3pt solid #C8102E;
+  padding: 8pt 12pt;
+  margin: 4pt 0 12pt 0;
+}
+.eval-meta {
+  margin: 0;
+  font-size: 9.5pt;
+  color: #555;
+}
+.badge-row {
+  margin: 6pt 0;
+}
+.badge {
+  display: inline-block;
+  padding: 2pt 8pt;
+  border-radius: 3pt;
+  font-size: 9pt;
+  font-weight: 700;
+  color: #fff;
+  margin-right: 4pt;
+  letter-spacing: 0.3pt;
+}
+.badge.nt-level { background: #B5924C; }
+.badge.rec      { background: #C8102E; }
+
+.cat-averages { margin: 6pt 0; }
+.cat-row {
+  display: grid;
+  grid-template-columns: 60pt 1fr 26pt;
+  gap: 8pt;
+  align-items: center;
+  margin: 3pt 0;
+}
+.cat-label { font-size: 9.5pt; color: #333; }
+.bar-bg {
+  height: 7pt;
+  background: #EAEAEA;
+  border-radius: 3pt;
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  background: #C8102E;
+}
+.cat-value {
+  text-align: right;
+  font-weight: 700;
+  font-size: 9.5pt;
+  color: #C8102E;
+}
+
+.summary {
+  font-size: 9.5pt;
+  color: #333;
+  margin: 6pt 0 0 0;
+  padding: 6pt 8pt;
+  background: #fff;
+  border: 1pt solid #E5E5E5;
+  border-left: 3pt solid #B5924C;
+  line-height: 1.5;
+}
+
+/* ── History table ─────────────────────────────────────────── */
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 4pt;
+  font-size: 9pt;
+}
+.history-table th {
+  background: #FAFAFA;
+  padding: 4pt 6pt;
+  text-align: left;
+  border-bottom: 1.2pt solid #C8102E;
+  color: #555;
+  font-weight: 600;
+}
+.history-table td {
+  padding: 4pt 6pt;
+  border-bottom: 1pt solid #EEE;
+}
+
+/* ── Footer ────────────────────────────────────────────────── */
+footer {
+  margin-top: 18pt;
+  padding-top: 6pt;
+  border-top: 1pt solid #DDD;
+  color: #888;
+  font-size: 8pt;
+  text-align: center;
+}
+
+/* Phase 7 — role badge mirror of the site style.css rule, scaled
+   for print. Drives the {{ evaluation_role_badge(...) }} macro on
+   the latest-eval panel and the Recent evaluations table. */
+.role-badge {
+  display: inline-block;
+  padding: 1pt 4pt;
+  border-radius: 2pt;
+  font-size: 7pt;
+  font-weight: 700;
+  letter-spacing: 0.3pt;
+  margin-left: 4pt;
+  vertical-align: middle;
+  text-transform: uppercase;
+}
+.role-badge.role-nt    { background: #10B981; color: #fff; }
+.role-badge.role-admin { background: #999;    color: #fff; }

@@ -1,5 +1,16 @@
 # Secrets
 .env
+# Phase 8: production/dev env files are droplet-local — NEVER committed.
+# The .example templates ARE committed (placeholder values only).
+.env.production
+.env.development
+.env.*.local
+
+# Phase 8: origin TLS cert/key for nginx (Cloudflare Full-strict).
+# Generated on the droplet via openssl; never tracked.
+nginx/certs/*.crt
+nginx/certs/*.key
+nginx/certs/*.pem
 
 # Python
 __pycache__/
@@ -9,6 +20,9 @@ __pycache__/
 
 # Uploads
 uploads/
+
+# Player photos (user data — not tracked in git)
+app/static/photos/*.jpg
 
 # Virtual environments
 .venv/
@@ -25,3 +39,5 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+
+bfa_scout_credentials.txt

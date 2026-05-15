@@ -1,0 +1,105 @@
+{% extends 'base.html' %}
+{% block title %}Edit User — BFA Scout{% endblock %}
+
+{% block content %}
+<div class="max-w-lg mx-auto px-4 py-10">
+
+  <div class="flex items-center gap-3 mb-6">
+    <a href="{{ url_for('admin.users_list') }}"
+       class="text-sm" style="color:var(--text-muted);">&larr; Users</a>
+    <h1 class="text-xl font-bold" style="color:var(--text);">
+      Edit: {{ user.full_name }}
+    </h1>
+  </div>
+
+  <!-- Edit profile -->
+  <div class="rounded-lg p-6 mb-6" style="background:var(--surface);border:1px solid var(--border);">
+    <h2 class="text-base font-semibold mb-4" style="color:var(--text);">Profile</h2>
+    <form method="POST" action="{{ url_for('admin.users_edit', user_id=user.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="mb-4">
+        <label class="block text-sm font-medium mb-1" style="color:var(--text-muted);">Email</label>
+        <p class="text-sm" style="color:var(--text);">{{ user.email }}</p>
+      </div>
+
+      <div class="mb-4">
+        <label for="full_name" class="block text-sm font-medium mb-1" style="color:var(--text);">
+          Full Name <span style="color:var(--brand);">*</span>
+        </label>
+        <input id="full_name" name="full_name" type="text" required
+               value="{{ form.get('full_name', user.full_name) if form is mapping else form['full_name'] }}"
+               class="w-full rounded px-3 py-2 text-sm"
+               style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+      </div>
+
+      <div class="mb-4">
+        <label for="full_name_ar" class="block text-sm font-medium mb-1" style="color:var(--text);">
+          Full Name (Arabic)
+        </label>
+        <input id="full_name_ar" name="full_name_ar" type="text" dir="rtl"
+               value="{{ form.get('full_name_ar', '') or '' }}"
+               class="w-full rounded px-3 py-2 text-sm"
+               style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+      </div>
+
+      <div class="mb-4">
+        <label for="role" class="block text-sm font-medium mb-1" style="color:var(--text);">Role</label>
+        <select id="role" name="role"
+                class="w-full rounded px-3 py-2 text-sm"
+                style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+          {% for r in roles %}
+            <option value="{{ r }}"
+                    {% if form.get('role', user.role) == r %}selected{% endif %}>
+              {{ r | replace('_', ' ') | title }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="mb-6 flex items-center gap-2">
+        <input id="is_active" name="is_active" type="checkbox"
+               class="rounded"
+               {% if user.is_active %}checked{% endif %}>
+        <label for="is_active" class="text-sm" style="color:var(--text);">Active</label>
+      </div>
+
+      <button type="submit"
+              class="px-4 py-2 rounded font-semibold text-sm text-white"
+              style="background:var(--brand);">Save changes</button>
+    </form>
+  </div>
+
+  <!-- Reset password -->
+  <div class="rounded-lg p-6" style="background:var(--surface);border:1px solid var(--border);">
+    <h2 class="text-base font-semibold mb-4" style="color:var(--text);">Reset Password</h2>
+    <form method="POST" action="{{ url_for('admin.users_reset_password', user_id=user.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="mb-4">
+        <label for="new_password" class="block text-sm font-medium mb-1" style="color:var(--text);">
+          New Password <span class="text-xs" style="color:var(--text-muted);">(min 8 characters)</span>
+        </label>
+        <input id="new_password" name="new_password" type="password" required minlength="8"
+               autocomplete="new-password"
+               class="w-full rounded px-3 py-2 text-sm"
+               style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+      </div>
+
+      <div class="mb-6">
+        <label for="confirm_password" class="block text-sm font-medium mb-1" style="color:var(--text);">
+          Confirm Password
+        </label>
+        <input id="confirm_password" name="confirm_password" type="password" required minlength="8"
+               autocomplete="new-password"
+               class="w-full rounded px-3 py-2 text-sm"
+               style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+      </div>
+
+      <button type="submit"
+              class="px-4 py-2 rounded font-semibold text-sm text-white"
+              style="background:var(--accent);">Reset password</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

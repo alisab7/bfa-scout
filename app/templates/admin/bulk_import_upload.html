@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+
+{% block title %}Bulk Player Import — BFA Scout{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 py-8">
+
+  <a href="{{ url_for('players.list_players') }}"
+     class="text-sm mb-4 inline-block" style="color:var(--text-muted);">&larr; Players</a>
+
+  <h1 class="text-2xl font-bold mb-2" style="color:var(--text);">Bulk Player Import</h1>
+  <p class="text-sm mb-6" style="color:var(--text-muted);">
+    Upload a CSV or Excel file. Server parses it, shows a preview with
+    validation results, and only commits after you confirm. Max
+    {{ 500 }} rows per import. Only <code>full_name</code> is required —
+    every other column is optional. Empty cells or "N/A" become NULL.
+  </p>
+
+  {# ── Pending session banner ──────────────────────────────────── #}
+  {% if pending %}
+    <div class="rounded-xl p-4 mb-4"
+         style="background:var(--accent);color:var(--bg);">
+      <p class="text-sm font-semibold mb-2">
+        You have a pending import: <em>{{ pending.file_name }}</em>
+        ({{ pending.summary.total }} rows).
+      </p>
+      <div class="flex gap-2">
+        <a href="{{ url_for('admin.bulk_import_preview') }}"
+           class="px-3 py-1 rounded text-sm font-semibold"
+           style="background:var(--bg);color:var(--text);">Continue</a>
+        <a href="{{ url_for('admin.bulk_import_discard') }}"
+           class="px-3 py-1 rounded text-sm font-semibold"
+           style="background:transparent;color:var(--bg);border:1px solid var(--bg);">Discard</a>
+      </div>
+    </div>
+  {% endif %}
+
+  {# ── Templates ───────────────────────────────────────────────── #}
+  <div class="rounded-xl p-4 mb-4"
+       style="background:var(--surface);border:1px solid var(--border);">
+    <h3 class="text-sm font-semibold mb-2" style="color:var(--accent);">
+      Download a template
+    </h3>
+    <p class="text-xs mb-3" style="color:var(--text-muted);">
+      Templates include the header row plus two example rows so you
+      can see the column format.
+    </p>
+    <a href="{{ url_for('admin.bulk_import_template_csv') }}"
+       class="px-3 py-1 rounded text-sm font-semibold"
+       style="background:var(--brand);color:#fff;">CSV template</a>
+    <a href="{{ url_for('admin.bulk_import_template_xlsx') }}"
+       class="px-3 py-1 rounded text-sm font-semibold"
+       style="background:var(--accent);color:var(--bg);">Excel template</a>
+  </div>
+
+  {# ── Upload form ─────────────────────────────────────────────── #}
+  <form action="{{ url_for('admin.bulk_import_upload') }}"
+        method="POST" enctype="multipart/form-data"
+        class="rounded-xl p-6"
+        style="background:var(--surface);border:1px solid var(--border);">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="block text-sm font-semibold mb-2" style="color:var(--text);">
+      Select file (.csv or .xlsx)
+    </label>
+    <input type="file" name="file" accept=".csv,.xlsx" required
+           class="block mb-4">
+    <button type="submit"
+            class="px-5 py-2 rounded text-sm font-semibold text-white"
+            style="background:var(--brand);">
+      Upload & preview
+    </button>
+  </form>
+
+  {# ── Accepted columns help text ──────────────────────────────── #}
+  <details class="rounded-lg p-3 mt-6"
+           style="background:var(--surface);border:1px solid var(--border);">
+    <summary class="cursor-pointer text-sm font-semibold"
+             style="color:var(--accent);">Accepted columns</summary>
+    <ul class="mt-2 text-xs" style="color:var(--text-muted);">
+      <li><code>full_name</code> — required, text</li>
+      <li><code>dob</code> — YYYY-MM-DD</li>
+      <li><code>national_id</code> — unique; min 5 chars</li>
+      <li><code>primary_position_code</code> — e.g. AMF, DMF, CB (case-insensitive)</li>
+      <li><code>nationality_code</code> — ISO alpha-3 (e.g. BRA, MAR, BHR)</li>
+      <li><code>nationality_status</code> — bahraini / foreign_ancestry / foreign_residency / foreign_other / not_eligible / unknown</li>
+      <li><code>eligible_from_date</code> — YYYY-MM-DD</li>
+      <li><code>bahrain_residency_start_date</code> — YYYY-MM-DD</li>
+      <li><code>current_club_name</code> — matches a clubs.name if possible</li>
+      <li><code>dominant_foot</code> — right / left / both</li>
+      <li><code>height_cm</code> — integer, sane range 140-220</li>
+      <li><code>weight_kg</code> — integer, sane range 40-120</li>
+    </ul>
+    <p class="mt-3 text-xs" style="color:var(--text-muted);">
+      Unknown columns are ignored (with a warning in the preview).
+      Column names are case-insensitive; order doesn't matter.
+    </p>
+  </details>
+
+</div>
+{% endblock %}

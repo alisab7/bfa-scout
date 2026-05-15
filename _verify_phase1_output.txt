@@ -1,0 +1,24 @@
+
+============================================================
+Phase 1 -- 2 / 13 checks passed
+============================================================
+
+[FAIL]  GET /health -> 200 {status:ok}  >> status=0
+[FAIL]  GET / (unauth) -> 302 to /auth/login  >> status=0 loc=
+[FAIL]  GET /auth/login -> 200 with form  >> Unable to connect to the remote server
+[FAIL]  CSRF token extracted  >> MISSING
+[FAIL]  POST bad creds -> 200 + error msg  >> status=0
+[FAIL]  POST good creds -> 200 (authenticated)  >> status=0
+[FAIL]  GET / (auth) -> 200 + BFA Scouting  >> status=0
+[FAIL]  GET /admin/users (admin) -> 200  >> status=0
+[FAIL]  GET /admin/users/new (admin) -> 200  >> status=0
+[FAIL]  GET /players/ (unauth) -> 302  >> status=0 loc=
+[FAIL]  GET /admin/users (unauth) -> 302  >> status=0
+[PASS]  audit_log has rows  >> n 
+---
+ 3
+(1 row)
+[PASS]  Exactly 1 admin in DB (seed idempotent)  >> n 
+---
+ 1
+(1 row)

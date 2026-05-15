@@ -1,0 +1,35 @@
+{# Phase 6.2.3: added nationality flag next to player name in search results. #}
+{% if results %}
+  <ul class="rounded mt-1 overflow-hidden"
+      style="background:var(--bg);border:1px solid var(--border);">
+    {% for p in results %}
+      <li>
+        <button type="button"
+                @click="pick({{ slot }}, {{ p.id }}, '{{ p.full_name|replace("'", "\\'") }}')"
+                class="w-full text-left px-3 py-2 text-sm flex items-center justify-between hover:opacity-80"
+                style="background:transparent;color:var(--text);border-bottom:1px solid var(--border);">
+          <span>
+            {# Phase 6.2.3: nationality flag (SVG, 14×10px) before name #}
+            {% if p.nationality_code %}
+              {% set flag = get_flag_svg(p.nationality_code) %}
+              {% if flag %}
+                <span style="display:inline-block;width:14px;height:10px;line-height:0;vertical-align:middle;margin-right:4px;">{{ flag | safe }}</span>
+              {% endif %}
+            {% endif %}
+            <span class="font-semibold">{{ p.full_name }}</span>
+            {% if p.position_code %}
+              <span class="ml-2 text-xs" style="color:var(--text-muted);">
+                {{ p.position_code }}{% if p.group_code %} · {{ p.group_code }}{% endif %}
+              </span>
+            {% endif %}
+          </span>
+          {% if p.current_club %}
+            <span class="text-xs" style="color:var(--text-muted);">{{ p.current_club }}</span>
+          {% endif %}
+        </button>
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p class="text-xs px-3 py-2" style="color:var(--text-muted);">No matches.</p>
+{% endif %}

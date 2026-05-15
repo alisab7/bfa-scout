@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block title %}Wyscout Imports — {{ player.full_name }}{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-8">
+
+  <div class="flex items-center justify-between mb-6">
+    <div class="flex items-center gap-3">
+      <a href="{{ url_for('players.player_profile', player_id=player.id) }}"
+         class="text-sm" style="color:var(--text-muted);">&larr; {{ player.full_name }}</a>
+      <h1 class="text-2xl font-bold" style="color:var(--text);">Wyscout Imports</h1>
+    </div>
+    {% if current_user.role in ('admin', 'technical_director', 'scout') %}
+      <a href="{{ url_for('wyscout.upload', player_id=player.id) }}"
+         class="px-4 py-2 rounded text-sm font-semibold text-white"
+         style="background:var(--brand);">+ Upload Stats</a>
+    {% endif %}
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="rounded-lg px-4 py-3 mb-4 text-sm font-medium"
+           style="background:rgba(34,197,94,0.12);color:#22C55E;border:1px solid #22C55E;">
+        {{ message }}
+      </div>
+    {% endfor %}
+  {% endwith %}
+
+  {% if import_list %}
+    <div class="rounded-xl overflow-hidden"
+         style="background:var(--surface);border:1px solid var(--border);">
+      <table class="w-full text-sm">
+        <thead>
+          <tr style="border-bottom:1px solid var(--border);">
+            <th class="px-4 py-3 text-left text-xs uppercase tracking-wide" style="color:var(--text-muted);">File</th>
+            <th class="px-4 py-3 text-left text-xs uppercase tracking-wide" style="color:var(--text-muted);">Rows</th>
+            <th class="px-4 py-3 text-left text-xs uppercase tracking-wide" style="color:var(--text-muted);">Status</th>
+            <th class="px-4 py-3 text-left text-xs uppercase tracking-wide" style="color:var(--text-muted);">Uploaded By</th>
+            <th class="px-4 py-3 text-left text-xs uppercase tracking-wide" style="color:var(--text-muted);">Date</th>
+            {% if current_user.role == 'admin' %}
+              <th class="px-4 py-3"></th>
+            {% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for imp in import_list %}
+            <tr style="border-bottom:1px solid var(--border);">
+              <td class="px-4 py-3 font-mono text-xs" style="color:var(--text);">
+                <a href="{{ url_for('wyscout.result', import_id=imp.id) }}"
+                   style="color:var(--accent);">{{ imp.file_name }}</a>
+              </td>
+              <td class="px-4 py-3" style="color:var(--text);">{{ imp.row_count }}</td>
+              <td class="px-4 py-3">
+                {% if imp.status == 'success' %}
+                  <span class="text-xs font-semibold px-2 py-0.5 rounded-full"
+                        style="background:rgba(34,197,94,0.15);color:#22C55E;">success</span>
+                {% elif imp.status == 'failed' %}
+                  <span class="text-xs font-semibold px-2 py-0.5 rounded-full"
+                        style="background:rgba(200,16,46,0.15);color:var(--brand);">failed</span>
+                {% else %}
+                  <span class="text-xs font-semibold px-2 py-0.5 rounded-full"
+                        style="background:rgba(156,163,175,0.15);color:var(--text-muted);">{{ imp.status }}</span>
+                {% endif %}
+              </td>
+              <td class="px-4 py-3" style="color:var(--text-muted);">{{ imp.uploaded_by_name or '—' }}</td>
+              <td class="px-4 py-3 text-xs" style="color:var(--text-muted);">
+                {{ imp.imported_at.strftime('%d %b %Y %H:%M') if imp.imported_at else '—' }}
+              </td>
+              {% if current_user.role == 'admin' %}
+                <td class="px-4 py-3">
+                  {% if imp.status == 'success' %}
+                    <form method="POST"
+                          action="{{ url_for('wyscout.delete_import', import_id=imp.id) }}"
+                          onsubmit="return confirm('Mark this import as deleted?');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button type="submit" class="text-xs" style="color:var(--brand);">Delete</button>
+                    </form>
+                  {% endif %}
+                </td>
+              {% endif %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="rounded-xl p-12 text-center"
+         style="background:var(--surface);border:1px dashed var(--border);">
+      <p class="text-sm mb-4" style="color:var(--text-muted);">No Wyscout imports yet for this player.</p>
+      {% if current_user.role in ('admin', 'technical_director', 'scout') %}
+        <a href="{{ url_for('wyscout.upload', player_id=player.id) }}"
+           class="px-4 py-2 rounded text-sm font-semibold text-white"
+           style="background:var(--brand);">Upload First File</a>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

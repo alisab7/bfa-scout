@@ -1,0 +1,18 @@
+{# Phase 7 — role badge for an evaluation.
+   Renders next to the evaluator name on history cards, latest-eval
+   panels, and the comparison page scout section. Scouts never see
+   NT evaluations (the read query filters them out), so the 'NT'
+   branch only fires for admin / TD / nt_staff / viewer viewers.
+   Admin-created evals get a neutral 'Admin' badge — visible to all,
+   helps disambiguate when admin acts on behalf of a scout.
+   Scout role gets no badge (default state — keeps the UI quiet for
+   the common case). #}
+{% macro evaluation_role_badge(role) -%}
+  {%- if role == 'nt_staff' -%}
+    <span class="role-badge role-nt"
+          title="National Team evaluation">NT</span>
+  {%- elif role == 'admin' -%}
+    <span class="role-badge role-admin"
+          title="Admin evaluation">Admin</span>
+  {%- endif -%}
+{%- endmacro %}

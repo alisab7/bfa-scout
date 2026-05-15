@@ -1,0 +1,106 @@
+{% extends 'base.html' %}
+{% block title %}My Profile — BFA Scout{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto px-4 py-10">
+  <h1 class="text-xl font-bold mb-6" style="color:var(--text);">My Profile</h1>
+
+  <!-- Profile form -->
+  <div class="rounded-lg p-6 mb-6" style="background:var(--surface);border:1px solid var(--border);">
+    <form method="POST" action="{{ url_for('auth.profile') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="mb-4">
+        <label class="block text-sm font-medium mb-1" style="color:var(--text-muted);">Email</label>
+        <p class="text-sm" style="color:var(--text);">{{ user.email }}</p>
+        <p class="text-xs mt-1" style="color:var(--text-muted);">Email cannot be changed. Contact an admin if needed.</p>
+      </div>
+
+      <div class="mb-4">
+        <label for="full_name" class="block text-sm font-medium mb-1" style="color:var(--text);">
+          Full Name <span style="color:var(--brand);">*</span>
+        </label>
+        <input id="full_name" name="full_name" type="text" required
+               value="{{ user.full_name }}"
+               class="w-full rounded px-3 py-2 text-sm"
+               style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+      </div>
+
+      <div class="mb-4">
+        <label for="full_name_ar" class="block text-sm font-medium mb-1" style="color:var(--text);">
+          Full Name (Arabic)
+        </label>
+        <input id="full_name_ar" name="full_name_ar" type="text" dir="rtl"
+               value="{{ user.full_name_ar or '' }}"
+               class="w-full rounded px-3 py-2 text-sm"
+               style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+      </div>
+
+      <div class="mb-6">
+        <label for="phone" class="block text-sm font-medium mb-1" style="color:var(--text);">
+          Phone
+        </label>
+        <input id="phone" name="phone" type="tel"
+               value="{{ user.phone or '' }}"
+               class="w-full rounded px-3 py-2 text-sm"
+               style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+      </div>
+
+      <div class="mb-4">
+        <label class="block text-sm font-medium mb-1" style="color:var(--text-muted);">Role</label>
+        <span class="text-sm px-2 py-1 rounded font-medium"
+              style="background:var(--bg);color:var(--text);border:1px solid var(--border);">
+          {{ user.role | replace('_', ' ') | title }}
+        </span>
+      </div>
+
+      <button type="submit"
+              class="px-4 py-2 rounded font-semibold text-sm text-white"
+              style="background:var(--brand);">
+        Save changes
+      </button>
+    </form>
+  </div>
+
+  <!-- Change password -->
+  <div class="rounded-lg p-6" style="background:var(--surface);border:1px solid var(--border);">
+    <h2 class="text-base font-semibold mb-4" style="color:var(--text);">Change Password</h2>
+    <form method="POST" action="{{ url_for('auth.change_password') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="mb-4">
+        <label for="current_password" class="block text-sm font-medium mb-1" style="color:var(--text);">
+          Current Password
+        </label>
+        <input id="current_password" name="current_password" type="password" required
+               class="w-full rounded px-3 py-2 text-sm"
+               style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+      </div>
+
+      <div class="mb-4">
+        <label for="new_password" class="block text-sm font-medium mb-1" style="color:var(--text);">
+          New Password <span class="text-xs" style="color:var(--text-muted);">(min 8 characters)</span>
+        </label>
+        <input id="new_password" name="new_password" type="password" required minlength="8"
+               class="w-full rounded px-3 py-2 text-sm"
+               style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+      </div>
+
+      <div class="mb-6">
+        <label for="confirm_password" class="block text-sm font-medium mb-1" style="color:var(--text);">
+          Confirm New Password
+        </label>
+        <input id="confirm_password" name="confirm_password" type="password" required minlength="8"
+               class="w-full rounded px-3 py-2 text-sm"
+               style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+      </div>
+
+      <button type="submit"
+              class="px-4 py-2 rounded font-semibold text-sm text-white"
+              style="background:var(--accent);">
+        Change password
+      </button>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}Import Result — BFA Scout{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto px-4 py-8">
+
+  <h1 class="text-2xl font-bold mb-6" style="color:var(--text);">Import Result</h1>
+
+  <div class="rounded-xl p-6 mb-6"
+       style="background:var(--surface);border:1px solid var(--border);">
+
+    <!-- Status badge -->
+    <div class="flex items-center gap-3 mb-5">
+      {% if imp.status == 'success' %}
+        <span class="text-lg font-bold" style="color:#22C55E;">✓ Import Successful</span>
+      {% else %}
+        <span class="text-lg font-bold" style="color:var(--brand);">✗ Import Failed</span>
+      {% endif %}
+    </div>
+
+    <dl class="grid grid-cols-2 gap-4">
+      <div>
+        <dt class="text-xs uppercase tracking-wide mb-0.5" style="color:var(--text-muted);">Player</dt>
+        <dd style="color:var(--text);">{{ imp.player_name or '—' }}</dd>
+      </div>
+      <div>
+        <dt class="text-xs uppercase tracking-wide mb-0.5" style="color:var(--text-muted);">File</dt>
+        <dd class="truncate" style="color:var(--text);">{{ imp.file_name }}</dd>
+      </div>
+      <div>
+        <dt class="text-xs uppercase tracking-wide mb-0.5" style="color:var(--text-muted);">Rows Processed</dt>
+        <dd style="color:var(--text);">{{ imp.row_count }}</dd>
+      </div>
+      <div>
+        <dt class="text-xs uppercase tracking-wide mb-0.5" style="color:var(--text-muted);">Imported At</dt>
+        <dd style="color:var(--text);">{{ imp.imported_at.strftime('%d %b %Y %H:%M') if imp.imported_at else '—' }}</dd>
+      </div>
+    </dl>
+
+    {% if imp.error_message %}
+      <div class="mt-4 pt-4" style="border-top:1px solid var(--border);">
+        <dt class="text-xs uppercase tracking-wide mb-1" style="color:var(--text-muted);">Error</dt>
+        <dd class="text-sm font-mono" style="color:var(--brand);">{{ imp.error_message }}</dd>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="flex gap-3">
+    {% if imp.player_id %}
+      <a href="{{ url_for('players.player_profile', player_id=imp.player_id) }}"
+         class="px-4 py-2 rounded text-sm font-semibold text-white"
+         style="background:var(--brand);">
+        View Player Profile
+      </a>
+      <a href="{{ url_for('wyscout.upload', player_id=imp.player_id) }}"
+         class="px-4 py-2 rounded text-sm font-semibold"
+         style="background:var(--surface);border:1px solid var(--border);color:var(--text);">
+        Upload Another File
+      </a>
+      <a href="{{ url_for('wyscout.imports', player_id=imp.player_id) }}"
+         class="text-sm flex items-center" style="color:var(--text-muted);">
+        Import history &rarr;
+      </a>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
