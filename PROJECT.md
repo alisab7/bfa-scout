@@ -33,19 +33,22 @@
 | **Phase 7.1: Widening (TD on /nt, viewer filtered)** | **✅ Complete** | `admin_or_nt_staff_required` adds TD; `_nt_visibility_clause` + 3 inline sites widen to filter viewer alongside scout |
 | **Phase 9: Bulk player import** | **✅ Complete** | CSV + Excel; pandas parser; preview-first UX; composite duplicate detection; transactional commit; 500-row cap; 46/46 E2E |
 | **Phase 8: Production deployment** | **✅ Complete (Cowork-side)** | Docker + compose + nginx + Spaces photo storage + healthz + backup cron + DEPLOY.md. v1.0.0. Droplet provisioning + SSH deploy tracked in DEPLOY.md |
+| **Phase 8.1: Security hardening** | **✅ Complete** | nginx login rate limit (10/min, burst 5); password complexity (≥12, upper+lower+digit); 8hr sliding session timeout + secure cookie flags. v1.0.1 |
+| Phase 8.2: Auth hardening v2 | Queued (v1.1) | CSRF token review, password reset email, 2FA/MFA |
 | Phase 10: AI features | Queued (post-v1) | Gemini integration |
 
 ## Current phase
 
-**Phase 8: Production deployment — Cowork-side complete. v1.0.0.
-Project enters MAINTENANCE MODE.**
+**Phase 8.1: Security hardening — complete. v1.0.1.**
 
-BFA-Scout is feature-complete. This commit ships all in-repo
-production infrastructure + the photo-storage abstraction. The
-project is now in maintenance mode: routine deploys on bug-fix
-commits, `/healthz` monitoring, auto backup retention. Any new
-feature is a new numbered phase (Phase 10 AI is the next queued, but
-that's post-v1).
+Pre-launch hardening. No schema changes. Nginx rate limits brute-force
+on `/auth/login`; password complexity enforced at all three
+password-setting flows; sessions expire after 8hr idle with secure
+cookie flags. Ali to complete Item 1 (admin password rotation) on the
+droplet per DEPLOY.md §11.
+
+Next: Phase 8.2 (v1.1) — password reset email + 2FA. Queued for first
+month of usage, not blocking launch.
 
 **This is a multi-actor phase. Status by actor:**
 

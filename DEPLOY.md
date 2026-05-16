@@ -196,6 +196,31 @@ Database → Backups) as a second line of defence.
 | OOM / worker killed mid-PDF | too many gunicorn workers | keep `workers=2` in `gunicorn.conf.py`; scale the droplet before raising workers (§9) |
 | Bulk import 413 | file > 50MB | `client_max_body_size` in `nginx/conf.d/bfa-scout.conf` |
 | Admin can't log in after deploy | seed didn't run / wrong env names | re-run `scripts/bootstrap_admin.py` (idempotent); it accepts ADMIN_* or INITIAL_ADMIN_* |
+| Legitimate users getting 429 on `/auth/login` | rate limit too aggressive | increase `rate` (e.g. `20r/m`) or `burst` (e.g. `10`) in `nginx/conf.d/bfa-scout.conf`; `docker compose restart nginx` to apply |
+
+---
+
+## 11. Admin password rotation (post-launch, one-time)
+
+After BFA-Scout is live and before handing access to staff:
+
+```bash
+# 1. Log in to https://<domain>/auth/login as the bootstrap admin
+# 2. Go to /admin/users → edit admin user → Reset Password
+#    New password must pass complexity: ≥12 chars, upper + lower + digit
+# 3. SSH into the droplet and remove the bootstrap credentials from .env
+ssh -i your-key root@164.90.181.13
+cd /home/bfa/bfa-scout
+nano .env.production
+# Comment out or remove:
+#   ADMIN_EMAIL=...
+#   ADMIN_PASSWORD=...
+# 4. Restart app to apply env change (no rebuild needed)
+docker compose -f docker-compose.prod.yml restart app
+# 5. Verify bootstrap script is now a no-op (no password reset):
+docker compose -f docker-compose.prod.yml exec app python scripts/bootstrap_admin.py
+# Expected: "OK — 1 admin user(s) present."
+```
 
 ---
 

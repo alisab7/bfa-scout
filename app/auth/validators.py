@@ -1,0 +1,41 @@
+"""
+app/auth/validators.py — shared input validators for auth flows.
+
+Phase 8.1: password complexity policy
+  - Min 12 characters
+  - At least one lowercase letter
+  - At least one uppercase letter
+  - At least one digit
+  - Max 128 characters (DoS prevention)
+
+Special characters are encouraged but not required — too restrictive in
+practice for users who type on Arabic/English keyboards interchangeably.
+"""
+
+import re
+
+
+def validate_password_strength(password: str) -> tuple[bool, str]:
+    """
+    Check *password* against the BFA-Scout complexity policy.
+
+    Returns:
+        (True, '')              if the password meets all requirements.
+        (False, error_message)  otherwise.
+
+    NOTE: Do NOT call this on existing stored hashes — only on plaintext
+    passwords supplied during create / reset / change flows.
+    """
+    if not password:
+        return False, 'Password is required.'
+    if len(password) < 12:
+        return False, 'Password must be at least 12 characters.'
+    if len(password) > 128:
+        return False, 'Password must be at most 128 characters.'
+    if not re.search(r'[a-z]', password):
+        return False, 'Password must contain at least one lowercase letter.'
+    if not re.search(r'[A-Z]', password):
+        return False, 'Password must contain at least one uppercase letter.'
+    if not re.search(r'\d', password):
+        return False, 'Password must contain at least one digit.'
+    return True, ''

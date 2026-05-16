@@ -63,19 +63,21 @@
       <div class="mb-4">
         <label for="password" class="block text-sm font-medium mb-1" style="color:var(--text);">
           Password <span style="color:var(--brand);">*</span>
-          <span class="text-xs" style="color:var(--text-muted);">(min 8 characters)</span>
         </label>
-        <input id="password" name="password" type="password" required minlength="8"
+        <input id="password" name="password" type="password" required minlength="12" maxlength="128"
                autocomplete="new-password"
                class="w-full rounded px-3 py-2 text-sm"
                style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+        <p class="text-xs mt-1" style="color:var(--text-muted);">
+          Minimum 12 characters. Must include uppercase, lowercase, and a digit.
+        </p>
       </div>
 
       <div class="mb-6">
         <label for="confirm_password" class="block text-sm font-medium mb-1" style="color:var(--text);">
           Confirm Password <span style="color:var(--brand);">*</span>
         </label>
-        <input id="confirm_password" name="confirm_password" type="password" required minlength="8"
+        <input id="confirm_password" name="confirm_password" type="password" required minlength="12" maxlength="128"
                autocomplete="new-password"
                class="w-full rounded px-3 py-2 text-sm"
                style="background:var(--bg);border:1px solid var(--border);color:var(--text);">

@@ -1,5 +1,34 @@
 # Changelog
 
+## v1.0.1 — Phase 8.1: Security hardening (2026-05-16)
+
+Pre-launch hardening pass. No schema changes; no new user-facing features.
+
+### Nginx rate limiting (Item 2)
+- `nginx/conf.d/bfa-scout.conf`: `limit_req_zone login_zone` (10 req/min, 10MB)
+- `/auth/login` gets a dedicated `location =` block with `limit_req burst=5 nodelay; limit_req_status 429`
+- All other routes unchanged
+
+### Password complexity (Item 3)
+- `app/auth/validators.py` (NEW): `validate_password_strength()` — min 12 chars, upper + lower + digit, max 128
+- Applied to all three password-setting flows: admin user-create, admin password-reset, user self-change-password
+- HTML forms updated: `minlength="12"`, `maxlength="128"`, hint text added
+- Existing stored hashes not affected; bootstrap_admin.py exempt
+
+### Session timeout (Item 4)
+- `PERMANENT_SESSION_LIFETIME = timedelta(hours=8)` — sliding window (each request resets countdown)
+- `SESSION_COOKIE_HTTPONLY = True`, `SESSION_COOKIE_SAMESITE = 'Lax'`
+- `SESSION_COOKIE_SECURE = True` in production, `False` in development
+- `before_request` handler marks every session permanent + modified
+
+### Ali's manual step (Item 1 — after deploy)
+See DEPLOY.md §11: rotate admin password via UI, remove ADMIN_EMAIL/ADMIN_PASSWORD from `.env.production`.
+
+### Tests
+- `migrations/_e2e_phase_8_1.py` (NEW): 15 assertions covering validator, session config, nginx config structure, before_request registration, route wiring
+
+---
+
 ## v1.0.0 — Phase 8: Production deployment infrastructure (2026-05-13)
 
 **First production release.** Containerised deploy to DigitalOcean

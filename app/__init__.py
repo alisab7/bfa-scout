@@ -1,4 +1,7 @@
-from flask import Flask, redirect, url_for
+import os
+from datetime import timedelta
+
+from flask import Flask, redirect, url_for, session
 from flask_login import LoginManager
 from flask_wtf.csrf import CSRFProtect
 
@@ -15,6 +18,17 @@ csrf = CSRFProtect()
 def create_app(config_class=Config):
     app = Flask(__name__, instance_relative_config=False)
     app.config.from_object(config_class())
+
+    # ── Session security (Phase 8.1) ──────────────────────────────
+    # Sliding 8-hour idle timeout: every request resets the countdown.
+    # SESSION_COOKIE_SECURE requires HTTPS; disabled in dev so local
+    # Flask (HTTP) doesn't silently drop sessions.
+    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)
+    app.config['SESSION_COOKIE_SECURE']   = (
+        os.environ.get('FLASK_ENV', 'development') == 'production'
+    )
+    app.config['SESSION_COOKIE_HTTPONLY'] = True   # No JS access
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # CSRF mitigation
 
     # ── Extensions ────────────────────────────────────────────────
     login_manager.init_app(app)
@@ -155,6 +169,15 @@ def create_app(config_class=Config):
     # dependency — works in browser context too since it's just file I/O).
     from .passport.data import _flag_svg_inline
     app.jinja_env.globals['get_flag_svg'] = _flag_svg_inline
+
+    # ── Session sliding window (Phase 8.1) ───────────────────────
+    # Mark every session as permanent so PERMANENT_SESSION_LIFETIME
+    # applies, and touch session.modified so Flask re-issues the
+    # cookie on every response, resetting the idle timer.
+    @app.before_request
+    def refresh_session_timeout():
+        session.permanent = True
+        session.modified = True
 
     # ── Root routes ───────────────────────────────────────────────
     from flask_login import current_user

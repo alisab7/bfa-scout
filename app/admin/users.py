@@ -21,6 +21,7 @@ from werkzeug.security import generate_password_hash
 from app.db import get_db
 from app.auth.decorators import admin_required
 from app.auth.audit import log_audit
+from app.auth.validators import validate_password_strength
 from . import bp
 
 VALID_ROLES = ('admin', 'technical_director', 'scout', 'viewer')
@@ -99,16 +100,18 @@ def users_new():
             error = 'Full name is required.'
         elif role not in VALID_ROLES:
             error = 'Invalid role.'
-        elif len(password) < 8:
-            error = 'Password must be at least 8 characters.'
         elif password != confirm_pw:
             error = 'Passwords do not match.'
         else:
-            conn = get_db()
-            with conn.cursor() as cur:
-                cur.execute('SELECT id FROM users WHERE email = %s', (email,))
-                if cur.fetchone():
-                    error = 'A user with that email already exists.'
+            pw_valid, pw_err = validate_password_strength(password)
+            if not pw_valid:
+                error = pw_err
+            else:
+                conn = get_db()
+                with conn.cursor() as cur:
+                    cur.execute('SELECT id FROM users WHERE email = %s', (email,))
+                    if cur.fetchone():
+                        error = 'A user with that email already exists.'
 
         if error:
             flash(error, 'error')
@@ -236,8 +239,9 @@ def users_reset_password(user_id):
     new_pw     = request.form.get('new_password', '')
     confirm_pw = request.form.get('confirm_password', '')
 
-    if len(new_pw) < 8:
-        flash('Password must be at least 8 characters.', 'error')
+    pw_valid, pw_err = validate_password_strength(new_pw)
+    if not pw_valid:
+        flash(pw_err, 'error')
         return redirect(url_for('admin.users_edit', user_id=user_id))
 
     if new_pw != confirm_pw:

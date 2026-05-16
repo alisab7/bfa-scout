@@ -8,6 +8,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from app.db import get_db
 from .models import User
 from .audit import log_audit
+from .validators import validate_password_strength
 
 bp = Blueprint('auth', __name__, template_folder='../templates/auth')
 
@@ -130,8 +131,9 @@ def change_password():
         flash('Current password is incorrect.', 'error')
         return redirect(url_for('auth.profile'))
 
-    if len(new_pw) < 8:
-        flash('New password must be at least 8 characters.', 'error')
+    is_valid, pw_err = validate_password_strength(new_pw)
+    if not is_valid:
+        flash(pw_err, 'error')
         return redirect(url_for('auth.profile'))
 
     if new_pw != confirm_pw:
