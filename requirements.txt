@@ -1,19 +1,34 @@
+# BFA-Scout — direct dependencies, pinned to versions validated in production.
+# Versions sourced from pip freeze on the production environment (Phase 8.1).
+# Transitive deps are resolved by pip at install time.
+#
+# To regenerate after adding a new package:
+#   pip install <new-package>
+#   pip freeze | grep <new-package>  → add pinned line here
+#
+# DO NOT commit unpinned or duplicate entries (this file had both — fixed Phase 8.1).
+
+# ── Web framework ─────────────────────────────────────────────────────────────
 Flask==3.1.0
-psycopg2-binary==2.9.10
-python-dotenv==1.1.0
 Flask-Login==0.6.3
 Flask-WTF==1.2.1
-email-validator==2.1.0
+Werkzeug==3.1.8          # pinned — generate_password_hash API stability
 gunicorn==23.0.0
-Pillow
-pandas>=2.0
-openpyxl>=3.1
-# Phase 6: Player Passport PDF. Requires GTK runtime on Windows
-# (Pango/GLib/cairo native DLLs); see GTK3-Runtime-Win64 installer.
-weasyprint>=68.0
-# Phase 6 E2E uses pypdf for text-extraction-based redaction assertions.
-pypdf>=6.0
-# Phase 8: S3-compatible client for DigitalOcean Spaces photo storage
-# (app/storage.py). Only the Spaces code path imports it; dev/local
-# mode never does, so a dev box without it still runs fine.
-boto3>=1.34
+
+# ── Database ──────────────────────────────────────────────────────────────────
+psycopg2-binary==2.9.10
+
+# ── PDF generation ────────────────────────────────────────────────────────────
+WeasyPrint==68.1
+Pillow==12.2.0
+
+# ── Cloud storage (DigitalOcean Spaces / S3-compatible) ───────────────────────
+boto3==1.35.0
+
+# ── CSV / Excel import ────────────────────────────────────────────────────────
+pandas==3.0.2
+openpyxl==3.1.5
+
+# ── Auth / env / validation ───────────────────────────────────────────────────
+python-dotenv==1.1.0
+email-validator==2.1.0   # Flask-WTF email field validation
