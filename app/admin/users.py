@@ -24,7 +24,15 @@ from app.auth.audit import log_audit
 from app.auth.validators import validate_password_strength
 from . import bp
 
-VALID_ROLES = ('admin', 'technical_director', 'scout', 'viewer')
+VALID_ROLES = ('admin', 'technical_director', 'scout', 'viewer', 'nt_staff')
+
+ROLE_LABELS = {
+    'admin':               'Admin',
+    'technical_director':  'Technical Director',
+    'scout':               'Scout',
+    'viewer':              'Viewer',
+    'nt_staff':            'NT Staff',
+}
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -118,6 +126,7 @@ def users_new():
             return render_template(
                 'admin/users/new.html',
                 roles=VALID_ROLES,
+                role_labels=ROLE_LABELS,
                 form=request.form,
             )
 
@@ -144,7 +153,7 @@ def users_new():
         flash(f'User {email} created.', 'success')
         return redirect(url_for('admin.users_list'))
 
-    return render_template('admin/users/new.html', roles=VALID_ROLES, form={})
+    return render_template('admin/users/new.html', roles=VALID_ROLES, role_labels=ROLE_LABELS, form={})
 
 
 # ── Edit ──────────────────────────────────────────────────────────────────────
@@ -181,6 +190,7 @@ def users_edit(user_id):
                 'admin/users/edit.html',
                 user=user,
                 roles=VALID_ROLES,
+                role_labels=ROLE_LABELS,
                 form=request.form,
             )
 
@@ -222,6 +232,7 @@ def users_edit(user_id):
         'admin/users/edit.html',
         user=user,
         roles=VALID_ROLES,
+        role_labels=ROLE_LABELS,
         form=user,
     )
 

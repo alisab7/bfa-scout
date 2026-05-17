@@ -1,5 +1,61 @@
 # Changelog
 
+## v1.0.2 — Root-cause audit: missing commits + nt_staff propagation (2026-05-17)
+
+### Audit 1 — missing conn.commit() sweep
+
+Reviewed every write route across all blueprints. One confirmed bug found and fixed:
+
+**HIGH** `app/wyscout/__init__.py::delete_import()` — `UPDATE wyscout_imports SET status='failed'` was missing `conn.commit()`. Admin saw the "Import marked as deleted" flash message but the database row was never changed. Fix: added `conn.commit()` immediately after the cursor context block, before the flash call.
+
+All other write paths confirmed clean:
+- `evaluations/helpers.py`: 9 write helpers — all committed ✅
+- `players/__init__.py`: `new_player`, `edit_player`, `deactivate` — all committed ✅
+- `admin/users.py`: `users_new`, `users_edit`, `users_reset_password`, `users_deactivate` — all committed ✅
+- `auth/__init__.py`: `login` (last_login_at update) + `change_password` — both committed ✅
+- `admin/bulk_import.py`: uses `with conn:` context manager — commits on success, rolls back on exception ✅
+- `nt/__init__.py`: read-only ✅
+- `auth/audit.py::log_audit`: has `conn.commit()` ✅
+
+### Audit 2 — nt_staff role propagation
+
+`nt_staff` was absent from every admin UI surface that lists roles. Fixed across 7 locations:
+
+- `app/admin/users.py`: added `'nt_staff'` to `VALID_ROLES` tuple (was 4 roles, now 5)
+- `app/admin/users.py`: added `ROLE_LABELS` dict with correct display strings (`'nt_staff': 'NT Staff'`); threaded `role_labels=ROLE_LABELS` into all 4 `render_template` calls for new.html and edit.html
+- `app/__init__.py`: registered `ROLE_LABELS` as Jinja global so all templates can access it
+- `app/templates/admin/users/new.html`: role dropdown uses `role_labels.get()` instead of raw `| title` filter
+- `app/templates/admin/users/edit.html`: same
+- `app/templates/admin/users/list.html`: added `'nt_staff': '#10B981'` to `role_color` dict
+- `app/templates/auth/profile.html`: role display uses `ROLE_LABELS.get()` (was "Nt Staff", now "NT Staff")
+- `app/templates/index.html`: same fix for signed-in-as label
+
+### Audit 2b — role-gated UI conditionals
+
+Root cause of the concrete bug (nt-test@bfa.bh: "New Evaluation" hidden on player profile): `scout_or_above` decorator excluded `nt_staff` so the backend 403'd; the templates mirrored the same exclusion. Fixed at both layers:
+
+**Backend (root fix)**
+- `app/auth/decorators.py`: `scout_or_above` now includes `'nt_staff'` — covers `evaluate`, `update_draft`, `submit_draft`, `delete_evaluation`, `restore` (evaluations blueprint), `new_player`, `edit_player`, `deactivate` (players blueprint)
+- `app/wyscout/__init__.py`: `upload()` inline guard updated to include `'nt_staff'`
+
+**Templates (13 locations)**
+- `players/profile.html` ×6: New Evaluation header button, Passport PDF download, Wyscout upload (stats header + empty state), + New Evaluation in evaluations section, empty-state "Click New Evaluation" hint — all now include `'nt_staff'`
+- `players/list.html`: "+ Add Player" button
+- `players/_grid.html`: empty-state "Add the first player"
+- `wyscout/imports.html` ×2: header "+ Upload Stats" + "Upload First File" empty state
+- `index.html`: Wyscout Import quick-action card (was admin/TD only)
+
+**Unchanged (correctly restricted)**
+- `players/new.html:177`, `players/edit.html:184` — NT eligibility fieldset stays `admin | technical_director` only
+- `evaluations/view.html` ×3 — Lock / Unlock / Admin-edit stays `admin | technical_director` only
+- `evaluations/_history_card.html` — admin delete controls stay `admin | technical_director` only
+- `wyscout/imports.html:41,70` — "Delete import" stays `admin` only
+
+### E2E
+- `migrations/_e2e_v1_0_2_audit.py`: expanded to 30+ assertions covering all three audit sub-sections (Audit 1, 2a display, 2b UI conditionals)
+
+---
+
 ## v1.0.1 — Phase 8.1: Security hardening (2026-05-16)
 
 Pre-launch hardening pass. No schema changes; no new user-facing features.

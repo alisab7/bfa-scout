@@ -50,7 +50,7 @@
         <label class="block text-sm font-medium mb-1" style="color:var(--text-muted);">Role</label>
         <span class="text-sm px-2 py-1 rounded font-medium"
               style="background:var(--bg);color:var(--text);border:1px solid var(--border);">
-          {{ user.role | replace('_', ' ') | title }}
+          {{ ROLE_LABELS.get(user.role, user.role | replace('_', ' ') | title) }}
         </span>
       </div>
 

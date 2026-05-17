@@ -91,6 +91,12 @@ def create_app(config_class=Config):
     app.register_blueprint(healthz_bp)
 
     # ── Jinja globals ─────────────────────────────────────────────
+    # v1.0.2: role display-name map (all 5 roles). Registered globally so
+    # every template can use ROLE_LABELS.get(role, role) without needing
+    # the admin blueprint's VALID_ROLES import.
+    from .admin.users import ROLE_LABELS
+    app.jinja_env.globals['ROLE_LABELS'] = ROLE_LABELS
+
     from .players.helpers import get_player_photo, get_player_pos, age
     app.jinja_env.globals['get_player_photo'] = get_player_photo
     app.jinja_env.globals['get_player_pos']   = get_player_pos

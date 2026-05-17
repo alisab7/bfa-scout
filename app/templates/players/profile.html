@@ -74,7 +74,7 @@
       {% endif %}
     </div>
 
-    {% if current_user.role in ('admin', 'technical_director', 'scout') %}
+    {% if current_user.role in ('admin', 'technical_director', 'scout', 'nt_staff') %}
       <div class="flex flex-col gap-2 shrink-0">
         <a href="{{ url_for('evaluations.evaluate', player_id=player.id) }}"
            class="px-4 py-2 rounded text-sm font-semibold text-white text-center"
@@ -168,7 +168,7 @@
        PDF generation is ~5-10s on Windows due to WeasyPrint/GTK; the
        button state tells the user the click registered. #}
     <div class="flex flex-wrap gap-2">
-      {% if current_user.role in ('admin', 'technical_director', 'scout') %}
+      {% if current_user.role in ('admin', 'technical_director', 'scout', 'nt_staff') %}
         <a href="{{ url_for('passport.player_passport', player_id=player.id) }}"
            class="passport-btn px-4 py-2 rounded text-sm font-semibold text-white"
            style="background:var(--brand);"
@@ -210,7 +210,7 @@
     <!-- Header row -->
     <div class="flex items-center justify-between mb-3">
       <h2 class="text-base font-semibold" style="color:var(--accent);">Wyscout Statistics</h2>
-      {% if current_user.role in ('admin', 'technical_director', 'scout') %}
+      {% if current_user.role in ('admin', 'technical_director', 'scout', 'nt_staff') %}
         <div class="flex gap-2">
           <a href="{{ url_for('wyscout.upload', player_id=player.id) }}"
              class="text-xs px-3 py-1 rounded font-semibold text-white"
@@ -404,7 +404,7 @@
         <p class="text-sm mb-3" style="color:var(--text-muted);">
           No Wyscout stats uploaded yet.
         </p>
-        {% if current_user.role in ('admin', 'technical_director', 'scout') %}
+        {% if current_user.role in ('admin', 'technical_director', 'scout', 'nt_staff') %}
           <a href="{{ url_for('wyscout.upload', player_id=player.id) }}"
              class="text-sm px-4 py-2 rounded font-semibold text-white"
              style="background:var(--brand);">Upload Wyscout Export</a>
@@ -425,7 +425,7 @@
           {{ evals | length }} on record
         </span>
       </h2>
-      {% if current_user.has_role('admin', 'technical_director', 'scout') %}
+      {% if current_user.has_role('admin', 'technical_director', 'scout', 'nt_staff') %}
         <a href="{{ url_for('evaluations.evaluate', player_id=player.id) }}"
            class="text-xs px-3 py-1 rounded font-semibold text-white"
            style="background:var(--brand);">+ New Evaluation</a>
@@ -441,7 +441,7 @@
            style="background:var(--surface);border:1px dashed var(--border);">
         <p class="text-sm" style="color:var(--text-muted);">
           No evaluations yet for this player.
-          {% if current_user.has_role('admin', 'technical_director', 'scout') %}
+          {% if current_user.has_role('admin', 'technical_director', 'scout', 'nt_staff') %}
             Click <strong>New Evaluation</strong> above to start one.
           {% endif %}
         </p>

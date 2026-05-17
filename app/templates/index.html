@@ -66,7 +66,7 @@
         Welcome back, {{ current_user.full_name }}
       </h1>
       <p class="text-sm" style="color:var(--text-muted);">
-        Signed in as <span style="color:var(--accent);">{{ current_user.role | replace('_', ' ') | title }}</span>
+        Signed in as <span style="color:var(--accent);">{{ ROLE_LABELS.get(current_user.role, current_user.role | replace('_', ' ') | title) }}</span>
       </p>
     </div>
 
@@ -87,7 +87,7 @@
       </a>
 
       <!-- Wyscout (admin / technical_director) -->
-      {% if current_user.has_role('admin', 'technical_director') %}
+      {% if current_user.has_role('admin', 'technical_director', 'nt_staff') %}
         <a href="{{ url_for('players.list_players') }}"
            class="block rounded-xl p-5 transition-opacity hover:opacity-90 no-underline"
            style="background:var(--surface);border:1px solid var(--border);color:var(--text);">

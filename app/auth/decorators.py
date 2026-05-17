@@ -21,11 +21,12 @@ def role_required(*allowed_roles):
 
 admin_required       = role_required('admin')
 admin_or_td_required = role_required('admin', 'technical_director')
-scout_or_above       = role_required('admin', 'technical_director', 'scout')
-# Phase 7: include 'nt_staff' in any_authenticated so NT users can hit
-# everything the existing decorators gate (player profiles, comparison,
-# etc.). Other decorators are NOT widened — NT staff is a peer of scout,
-# not a superuser; admin/TD still own admin-class actions.
+# v1.0.2: nt_staff added to scout_or_above. NT staff need the same
+# create/evaluate/upload access as scouts (concrete bug: New Evaluation
+# button was hidden because the backend 403'd nt_staff). Admin/TD
+# class actions (lock, unlock, admin-edit, eligibility fieldset) remain
+# gated by admin_or_td_required separately.
+scout_or_above       = role_required('admin', 'technical_director', 'scout', 'nt_staff')
 any_authenticated    = role_required('admin', 'technical_director',
                                      'scout', 'viewer', 'nt_staff')
 

@@ -57,7 +57,7 @@ def _require_player(player_id: int):
 @bp.route('/upload/<int:player_id>', methods=['GET', 'POST'])
 @login_required
 def upload(player_id):
-    if current_user.role not in ('admin', 'technical_director', 'scout'):
+    if current_user.role not in ('admin', 'technical_director', 'scout', 'nt_staff'):
         abort(403)
 
     player = _require_player(player_id)
@@ -186,6 +186,7 @@ def delete_import(import_id):
             """,
             (import_id,)
         )
+    conn.commit()
     flash("Import marked as deleted.", "info")
     return redirect(url_for('wyscout.imports', player_id=player_id))
 

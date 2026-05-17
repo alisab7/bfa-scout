@@ -54,7 +54,7 @@
           {% for r in roles %}
             <option value="{{ r }}"
                     {% if form.get('role', 'viewer') == r %}selected{% endif %}>
-              {{ r | replace('_', ' ') | title }}
+              {{ role_labels.get(r, r | replace('_', ' ') | title) }}
             </option>
           {% endfor %}
         </select>
