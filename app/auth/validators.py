@@ -23,13 +23,21 @@ def validate_password_strength(password: str) -> tuple[bool, str]:
         (True, '')              if the password meets all requirements.
         (False, error_message)  otherwise.
 
+    Policy (Phase 8.1.1):
+      - Min 8 characters
+      - At least one lowercase letter
+      - At least one uppercase letter
+      - At least one digit
+      - At least one special character
+      - Max 128 characters (DoS prevention)
+
     NOTE: Do NOT call this on existing stored hashes — only on plaintext
     passwords supplied during create / reset / change flows.
     """
     if not password:
         return False, 'Password is required.'
-    if len(password) < 12:
-        return False, 'Password must be at least 12 characters.'
+    if len(password) < 8:
+        return False, 'Password must be at least 8 characters.'
     if len(password) > 128:
         return False, 'Password must be at most 128 characters.'
     if not re.search(r'[a-z]', password):
@@ -38,4 +46,6 @@ def validate_password_strength(password: str) -> tuple[bool, str]:
         return False, 'Password must contain at least one uppercase letter.'
     if not re.search(r'\d', password):
         return False, 'Password must contain at least one digit.'
+    if not re.search(r'[!@#$%^&*()\-_=+\[\]{};:\'",.<>/?\\|`~]', password):
+        return False, 'Password must contain at least one special character.'
     return True, ''
