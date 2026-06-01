@@ -39,6 +39,25 @@
 
 ## Current phase
 
+**Residents view (/nt/residents) — complete. v1.1.0.**
+
+Post-launch feature: a second coaching-team track. `/nt/residents`
+lists `foreign_residency` players split into **Eligible Now** (5-year
+clock complete) and **Still Counting** (future-eligible with date, or
+"date not set"). Additive only — no schema/role changes; reuses the
+shared `compute_suggested_eligibility` date math and the existing
+`admin_or_nt_staff_required` gate (admin + TD + nt_staff). Existing
+`/nt` left UNCHANGED per the hard rule (it shows eligible players of
+any route, not just citizens — the spec's "citizen-only" framing was
+aspirational; the regression test asserts "/nt unchanged").
+
+New: `app/nt/helpers.py:get_resident_players()`, `nt.residents` route,
+`nt/residents.html` + `nt/_residents_table.html`, Citizens↔Residents
+tab strips, "Residents" nav link (desktop + mobile). 15/15 new E2E;
+272/272 prior-suite regression.
+
+---
+
 **Phase 8.1: Security hardening — complete. v1.0.1.**
 
 Pre-launch hardening. No schema changes. Nginx rate limits brute-force

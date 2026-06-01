@@ -74,11 +74,15 @@
              class="transition-opacity hover:opacity-80"
              style="color:var(--text);">Compare</a>
           {# Phase 7.1: NT workspace — admin + TD + nt_staff. Scouts
-             and viewers don't see the link. #}
+             and viewers don't see the link. Residents view shares the
+             same gate. #}
           {% if current_user.has_role('admin', 'technical_director', 'nt_staff') %}
             <a href="{{ url_for('nt.index') }}"
                class="transition-opacity hover:opacity-80"
                style="color:var(--accent);font-weight:600;">National Team</a>
+            <a href="{{ url_for('nt.residents') }}"
+               class="transition-opacity hover:opacity-80"
+               style="color:var(--accent);font-weight:600;">Residents</a>
           {% endif %}
           {% if current_user.has_role('admin') %}
             <a href="{{ url_for('admin.users_list') }}"
@@ -147,11 +151,14 @@
         <a href="{{ url_for('players.compare_form') }}"
            class="block py-2 text-sm font-medium"
            style="color:var(--text);">Compare</a>
-        {# Phase 7.1: TD also gets /nt. #}
+        {# Phase 7.1: TD also gets /nt. Residents view shares the gate. #}
         {% if current_user.has_role('admin', 'technical_director', 'nt_staff') %}
           <a href="{{ url_for('nt.index') }}"
              class="block py-2 text-sm font-medium"
              style="color:var(--accent);">National Team</a>
+          <a href="{{ url_for('nt.residents') }}"
+             class="block py-2 text-sm font-medium"
+             style="color:var(--accent);">Residents</a>
         {% endif %}
         {% if current_user.has_role('admin') %}
           <a href="{{ url_for('admin.users_list') }}"

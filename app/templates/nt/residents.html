@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block title %}National Team · Residents — BFA Scout{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 py-8">
+
+  <h1 class="text-2xl font-bold mb-1" style="color:var(--text);">
+    National Team · Residents
+  </h1>
+  <p class="text-sm mb-4" style="color:var(--text-muted);">
+    Naturalization-pathway players (foreign residents). A resident
+    becomes eligible to represent Bahrain once their 5-year residency
+    clock completes. Evaluations recorded here are tagged
+    <span class="role-badge role-nt">NT</span> and hidden from the
+    scout role.
+  </p>
+
+  {# Tab strip — switch between the two coaching tracks. #}
+  <div class="flex gap-2 mb-6 text-sm">
+    <a href="{{ url_for('nt.index') }}"
+       class="px-3 py-1.5 rounded font-semibold"
+       style="background:var(--bg);color:var(--text-muted);border:1px solid var(--border);">
+      Citizens
+    </a>
+    <a href="{{ url_for('nt.residents') }}"
+       class="px-3 py-1.5 rounded font-semibold"
+       style="background:var(--brand);color:#fff;">
+      Residents
+    </a>
+  </div>
+
+  {# ── Eligible Now ─────────────────────────────────────────────── #}
+  <section class="mb-8">
+    <div class="flex items-baseline gap-2 mb-3">
+      <h2 class="text-lg font-bold" style="color:#22C55E;">Eligible Now</h2>
+      <span class="text-sm" style="color:var(--text-muted);">
+        ({{ eligible_now | length }})
+      </span>
+    </div>
+    {% if eligible_now %}
+      {% with rows = eligible_now, show_eta = False %}
+        {% include 'nt/_residents_table.html' %}
+      {% endwith %}
+    {% else %}
+      <div class="rounded-xl p-5"
+           style="background:var(--surface);border:1px solid var(--border);">
+        <p class="text-sm" style="color:var(--text-muted);">
+          No residents are currently eligible. Players appear here once
+          their recorded residency clock passes the 5-year mark.
+        </p>
+      </div>
+    {% endif %}
+  </section>
+
+  {# ── Still Counting ───────────────────────────────────────────── #}
+  <section>
+    <div class="flex items-baseline gap-2 mb-3">
+      <h2 class="text-lg font-bold" style="color:var(--accent);">Still Counting</h2>
+      <span class="text-sm" style="color:var(--text-muted);">
+        ({{ still_counting | length }})
+      </span>
+    </div>
+    {% if still_counting %}
+      {% with rows = still_counting, show_eta = True %}
+        {% include 'nt/_residents_table.html' %}
+      {% endwith %}
+    {% else %}
+      <div class="rounded-xl p-5"
+           style="background:var(--surface);border:1px solid var(--border);">
+        <p class="text-sm" style="color:var(--text-muted);">
+          No residents are currently in the qualification period.
+        </p>
+      </div>
+    {% endif %}
+  </section>
+
+</div>
+{% endblock %}

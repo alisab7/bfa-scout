@@ -1,5 +1,67 @@
 # Changelog
 
+## v1.1.0 — Residents view for the coaching team (/nt/residents) (2026-06-01)
+
+A second coaching-team track alongside the existing `/nt` (citizens).
+`/nt/residents` lists naturalization-pathway players
+(`nationality_status = 'foreign_residency'`), split into **Eligible
+Now** (5-year residency clock complete) and **Still Counting**
+(future-eligible — shows the date, or "date not set" when no residency
+start has been recorded). No schema changes, no new roles — purely an
+additive view reusing existing data + date math.
+
+### What landed
+- `app/nt/__init__.py` — new `residents()` route at `GET /nt/residents`,
+  same gate as `/nt` (`admin_or_nt_staff_required` = admin + TD +
+  nt_staff, per Phase 7.1). `index()` untouched.
+- `app/nt/helpers.py` — `get_resident_players()` → `(eligible_now,
+  still_counting)`. Effective eligibility date per player =
+  explicit `eligible_from_date` if set, else
+  `compute_suggested_eligibility(bahrain_residency_start_date)`, else
+  None. **No reinvented date math** — reuses the shared
+  `app/players/eligibility.py` helper (residency_start + 5y, leap-safe),
+  mirroring `compute_eligibility_status`'s priority order. Filters on
+  `is_active = TRUE`.
+- `app/templates/nt/_residents_table.html` — NEW. A variant of the
+  `/nt` squad table that surfaces the eligibility **date** in its
+  dedicated column (the base `_squad_table.html` only shows "5-yr
+  residency" with no date), plus a "date not set" badge. Built as a
+  variant rather than editing the shared partial → zero risk to `/nt`.
+- `app/templates/nt/residents.html` — NEW. Two sections + a Citizens↔
+  Residents tab strip + friendly empty states.
+- `app/templates/nt/index.html` — added the matching tab strip
+  (Citizens active) so the two tracks are mutually discoverable.
+- `app/templates/base.html` — "Residents" nav link added next to
+  "National Team" in BOTH nav blocks (desktop + mobile), same
+  admin/TD/nt_staff gate.
+
+### (1.5) catches surfaced before building
+- **Spec SQL would error.** The spec's `get_resident_players()` sketch
+  (and its pre-flight psql) filtered `players` on `deleted_at IS NULL`
+  — but the `players` table has **no `deleted_at`** column (soft-delete
+  lives at the evaluations layer, Phase 5c-3). Used `is_active = TRUE`,
+  matching the existing `/nt` helper.
+- **"/nt is citizen-only" is not reality.** The spec's locked decision
+  called `/nt` "citizen-only", but `get_eligible_squad_players()`
+  actually shows eligible players of ANY route (bahraini / ancestry /
+  explicit-date / completed-5yr-residency), so eligible residents
+  already appear on `/nt`. The hard rule "do NOT modify the `/nt`
+  filter" resolves the contradiction: `/nt` is left UNCHANGED. The
+  regression test asserts "/nt unchanged" (still shows the citizen,
+  still excludes non-eligible residents), not "bahraini-only".
+
+### Verified
+- **New E2E: 15/15 PASS** ([migrations/_e2e_nt_residents.py](migrations/_e2e_nt_residents.py))
+  — full permission matrix (nt_staff/admin/TD 200; scout/viewer 403;
+  anon→login); section split (past→Eligible Now; future→Still Counting
+  with date; no-date→Still Counting "date not set"); bahraini excluded;
+  `/nt` unchanged; nav-link gating (present for nt_staff, absent for
+  scout).
+- **Regression: 272/272 across all 9 prior suites** (4.2, 5d-1, 6.0,
+  6.1, 6.2, 6.2.1, 7, 7.1, 9). 6.1's timing-log assertion is coupled to
+  a specific Flask log filename; once the dev server logs to the
+  expected path it's 57/57 — not a code regression.
+
 ## v1.0.2 — Root-cause audit: missing commits + nt_staff propagation (2026-05-17)
 
 ### Audit 1 — missing conn.commit() sweep

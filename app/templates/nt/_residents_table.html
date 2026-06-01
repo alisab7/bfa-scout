@@ -1,0 +1,87 @@
+{# Residents squad table (Phase: /nt/residents).
+   A variant of nt/_squad_table.html that surfaces the *eligibility
+   date* in its dedicated column — the base /nt partial only shows
+   "5-yr residency" with no date for residency-route players, which
+   isn't enough for the coaching team to plan around.
+
+   Vars in scope:
+     rows           list of player dicts (from get_resident_players),
+                    each carrying `eligible_from_effective` (date|None)
+     show_eta       bool — True for the "Still Counting" section, where
+                    the date is forward-looking; False for "Eligible Now"
+   get_nt_evaluation_count is a registered Jinja global. #}
+<div class="rounded-xl overflow-hidden"
+     style="background:var(--surface);border:1px solid var(--border);">
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr style="background:var(--bg);border-bottom:1px solid var(--border);">
+          <th class="px-4 py-3 text-left"  style="color:var(--text-muted);">Player</th>
+          <th class="px-4 py-3 text-left"  style="color:var(--text-muted);">Position</th>
+          <th class="px-4 py-3 text-left"  style="color:var(--text-muted);">Club</th>
+          <th class="px-4 py-3 text-left"  style="color:var(--text-muted);">
+            {{ 'Eligible since' if not show_eta else 'Eligible from' }}
+          </th>
+          <th class="px-4 py-3 text-right" style="color:var(--text-muted);">NT evals</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in rows %}
+          {% set nt_count = get_nt_evaluation_count(p.id) %}
+          <tr style="border-bottom:1px solid var(--border);">
+            <td class="px-4 py-3">
+              <a href="{{ url_for('players.player_profile', player_id=p.id) }}"
+                 class="font-semibold" style="color:var(--text);">
+                {{ p.full_name }}
+              </a>
+              {% if p.full_name_ar %}
+                <span class="text-xs ml-1" style="color:var(--text-muted);direction:rtl;">
+                  {{ p.full_name_ar }}
+                </span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3" style="color:var(--text);">
+              {{ p.position_name or '—' }}
+              {% if p.position_group_code %}
+                <span class="text-xs" style="color:var(--text-muted);">
+                  ({{ p.position_group_code }})
+                </span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3" style="color:var(--text);">
+              {{ p.club_name or p.current_club or '—' }}
+            </td>
+            <td class="px-4 py-3">
+              {% if p.eligible_from_effective %}
+                {% if show_eta %}
+                  <span style="color:var(--accent);font-weight:600;">
+                    {{ p.eligible_from_effective }}
+                  </span>
+                {% else %}
+                  <span style="color:#22C55E;font-weight:600;">
+                    {{ p.eligible_from_effective }}
+                  </span>
+                {% endif %}
+              {% else %}
+                <span class="px-2 py-0.5 rounded text-xs"
+                      style="background:var(--bg);color:var(--brand);border:1px solid var(--border);"
+                      title="No Bahrain residency start date recorded — an admin must set it on the player's edit page before the eligibility clock can be computed.">
+                  date not set
+                </span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3 text-right">
+              {% if nt_count > 0 %}
+                <span class="font-mono" style="color:var(--brand);font-weight:700;">
+                  {{ nt_count }}
+                </span>
+              {% else %}
+                <span style="color:var(--text-muted);">0</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

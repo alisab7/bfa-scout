@@ -13,6 +13,20 @@
     and are hidden from the scout role.
   </p>
 
+  {# Tab strip — switch between the two coaching tracks (Residents view). #}
+  <div class="flex gap-2 mb-6 text-sm">
+    <a href="{{ url_for('nt.index') }}"
+       class="px-3 py-1.5 rounded font-semibold"
+       style="background:var(--brand);color:#fff;">
+      Citizens
+    </a>
+    <a href="{{ url_for('nt.residents') }}"
+       class="px-3 py-1.5 rounded font-semibold"
+       style="background:var(--bg);color:var(--text-muted);border:1px solid var(--border);">
+      Residents
+    </a>
+  </div>
+
   {% if squad %}
     {% include 'nt/_squad_table.html' %}
   {% else %}
