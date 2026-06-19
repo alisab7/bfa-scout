@@ -48,3 +48,5 @@ bfa_scout_ed25519.pub
 *.pem
 *_ed25519
 *_ed25519.pub
+
+sample_data/
