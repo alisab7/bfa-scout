@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}Photo Import Result — BFA Scout{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 py-8">
+
+  <h1 class="text-2xl font-bold mb-4" style="color:var(--text);">Photo Import Complete</h1>
+
+  <div class="flex flex-wrap gap-3 mb-6 text-sm">
+    <span class="px-3 py-1 rounded" style="background:#22C55E;color:#fff;">{{ summary.uploaded|length }} uploaded</span>
+    <span class="px-3 py-1 rounded" style="background:#B5924C;color:#fff;">{{ summary.no_match|length }} no match</span>
+    <span class="px-3 py-1 rounded" style="background:#C8102E;color:#fff;">{{ (summary.failed|length) + (summary.errors|length) }} error</span>
+  </div>
+
+  {% if summary.no_match %}
+    <div class="rounded-xl p-4 mb-4" style="background:var(--surface);border:1px solid var(--border);">
+      <h3 class="text-sm font-semibold mb-2" style="color:#B5924C;">
+        No matching player (check the CPR in the filename)
+      </h3>
+      <ul class="text-xs space-y-1" style="color:var(--text-muted);">
+        {% for fn in summary.no_match %}<li>{{ fn }}</li>{% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  {% if summary.errors or summary.failed %}
+    <div class="rounded-xl p-4 mb-4" style="background:var(--surface);border:1px solid var(--border);">
+      <h3 class="text-sm font-semibold mb-2" style="color:var(--brand);">Errors</h3>
+      <ul class="text-xs space-y-1" style="color:var(--text-muted);">
+        {% for e in summary.errors %}<li>{{ e.filename }} — {{ e.reason }}</li>{% endfor %}
+        {% for e in summary.failed %}<li>{{ e.filename }} — upload failed: {{ e.reason }}</li>{% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  <div class="flex gap-3">
+    <a href="{{ url_for('players.list_players') }}"
+       class="px-4 py-2 rounded text-sm font-semibold text-white"
+       style="background:var(--brand);">View players</a>
+    <a href="{{ url_for('admin.photo_import_index') }}"
+       class="px-4 py-2 rounded text-sm font-semibold"
+       style="background:var(--bg);color:var(--text);border:1px solid var(--border);">Import more photos</a>
+  </div>
+
+</div>
+{% endblock %}

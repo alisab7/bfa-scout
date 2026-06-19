@@ -35,10 +35,40 @@
 | **Phase 8: Production deployment** | **✅ Complete (Cowork-side)** | Docker + compose + nginx + Spaces photo storage + healthz + backup cron + DEPLOY.md. v1.0.0. Droplet provisioning + SSH deploy tracked in DEPLOY.md |
 | **Phase 8.1: Security hardening** | **✅ Complete** | nginx login rate limit (10/min, burst 5); password complexity (≥12, upper+lower+digit); 8hr sliding session timeout + secure cookie flags. v1.0.1 |
 | **Youth NT section + restricted youth_nt role** | **✅ Complete** | `players.age_group` (U17/U20/U23/senior); `/youth` section; general list excludes youth; first restricted role `youth_nt` (sees only youth, query-level + 403s); 28/28 functional + 24/24 security E2E. v1.2.0 |
+| **Bulk import: Registry Excel + CPR-matched photos** | **✅ Complete** | `/admin/import/players` (registry `.xlsx` → preview → confirm, CPR-keyed, age-group-highest-wins, idempotent) + `/admin/import/photos` (CPR-filename match, reuses photo pipeline); `app/players/cpr.normalize_cpr` (9-digit TEXT); admin-only; 24/24 E2E. v1.3.0 |
 | Phase 8.2: Auth hardening v2 | Queued (v1.1) | CSRF token review, password reset email, 2FA/MFA |
 | Phase 10: AI features | Queued (post-v1) | Gemini integration |
 
 ## Current phase
+
+**Bulk import: Player Registry Excel + CPR-matched photos — complete. v1.3.0.**
+
+Two admin-only preview→confirm import pages so management injects the
+roster instead of hand-entering it.
+
+- **`/admin/import/players`** — the BFA Player Registry `.xlsx` (sheet
+  `➡ Player Registry`, data row 4+). `app/players/cpr.normalize_cpr`
+  restores Excel-stripped leading zeros to 9-digit TEXT (the master key;
+  born-2000 `503061`→`000503061`). CPR-keyed dedupe, **highest age group
+  wins** (U23>U20>U17>senior), example rows skipped, idempotent, every
+  rejected row reported. Sets `players.age_group` → imported youth route
+  into `/youth/<group>`. Parsed with **openpyxl directly** (pandas would
+  destroy the int/text/datetime distinctions the CPR/DOB rules need).
+- **`/admin/import/photos`** — multi-file upload matched by CPR in the
+  filename; reuses the existing photo pipeline (`save_player_photo` →
+  `storage.put_player_photo`, keyed by player_id). `photo_path` is
+  vestigial and intentionally left untouched (matches manual upload).
+- Reuses the Phase 9 parked-session store; the existing generic
+  `/admin/players/bulk-import` is untouched.
+- **Verification:** `migrations/_e2e_bulk_import.py` 24/24; Phase 9 46/0,
+  youth 28/0 + 24/0, residents 15/0, v1.0.2 audit pass.
+- **Note for Ali:** test with the REAL files (`BFA_Player_Registry_
+  Template_u23.xlsx` + the 1st-team file in `sample_data/`). Run a
+  **dry-run preview FIRST** on production with a real file — the preview is
+  your safety check that CPR normalization + age-group assignment look
+  right before anything is written.
+
+---
 
 **Youth NT section + restricted youth_nt role — complete. v1.2.0.**
 

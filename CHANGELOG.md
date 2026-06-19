@@ -1,5 +1,61 @@
 # Changelog
 
+## v1.3.0 — Bulk import: Player Registry Excel + CPR-matched photos (2026-06-20)
+
+Two admin-only, preview-then-confirm import pages so management can inject
+the BFA Player Registry roster instead of hand-entering it.
+
+### What landed
+- **`/admin/import/players`** — upload the registry `.xlsx` → dry-run
+  preview (NEW/UPDATE/SKIP/ERROR per row + counts) → confirm →
+  transactional write. New: `app/admin/registry_import.py` (routes) +
+  `registry_import_helpers.py` (parse/classify). Reads the
+  `➡ Player Registry` sheet from row 4 via **openpyxl directly** (not
+  pandas — preserves int-vs-text and datetime-vs-string so CPR/DOB rules
+  work). Templates `admin/registry_import_{upload,preview,result}.html`.
+- **`/admin/import/photos`** — multi-file image upload, matched to players
+  by CPR derived from the filename → preview (MATCH/NO MATCH/ERROR) →
+  confirm. New: `app/admin/photo_import.py` + 3 templates. Reuses the
+  app's existing photo pipeline (`app/players/photos.save_player_photo` →
+  Pillow 400×400 → `storage.put_player_photo`, keyed by player_id) so
+  imported photos display identically to manual uploads.
+- **`app/players/cpr.py`** — `normalize_cpr()`: the master-key normalizer.
+  9-digit TEXT, restores Excel-stripped leading zeros (`503061` →
+  `'000503061'`, `41209370` → `'041209370'`), rejects garbage. CPR is
+  NEVER stored as a number.
+- **Rules:** one player per CPR; **highest age group wins** (U23>U20>U17>
+  senior) on in-file or vs-DB conflict; example rows skipped; idempotent
+  (re-import → all UPDATE, no new rows); every rejected row reported with
+  a reason (no silent drops). Sets `players.age_group`, so imported youth
+  players route into `/youth/<group>` and out of the general list.
+- Admin-only buttons "Registry import" + "Photo import" on the players
+  list (next to the existing Phase 9 "Bulk import").
+
+### (1.5) catches surfaced before building
+- **`normalize_cpr()` did NOT exist** (spec assumed it did "per prior
+  work"). Created it. The spec's reference impl also had a bug — it
+  deleted *all* non-digits, turning `' 26/12'` into `'000002612'`, but the
+  spec's own examples say reject. Implemented to the **examples** (pure-
+  digit core required; embedded symbols rejected).
+- **An existing generic Phase 9 importer** (`/admin/players/bulk-import`)
+  already exists. This registry importer is separate (CPR-keyed, age-group
+  rules, photos) but **reuses** its parked-session store
+  (`bulk_import_session.py`) and the transactional commit pattern; Phase 9
+  is untouched (46/46 still pass).
+- **Photos are keyed by `player_id`, not CPR; `players.photo_path` is
+  vestigial** (never read/written, even by manual upload). The importer
+  matches CPR→player_id then reuses `save_player_photo`; it does NOT set
+  `photo_path` — exactly matching manual-upload behaviour.
+
+### Verification
+- `migrations/_e2e_bulk_import.py` — **24/24** (real HTTP; builds a real
+  registry `.xlsx`; born-2000 double-zero, example skip, highest-age-wins,
+  malformed-CPR ERROR, idempotent re-import, youth routing, photo
+  CPR-match incl. zero-stripped filename, non-admin 403; photos exercise
+  the real dev local-FS pipeline).
+- Regression: Phase 9 46/0, youth functional 28/0, youth security 24/0,
+  residents 15/0, v1.0.2 audit all-pass.
+
 ## v1.2.0 — Youth NT section (U17/U20/U23) + restricted youth_nt role (2026-06-20)
 
 Board-level expansion: youth scouting added as a dedicated section, plus

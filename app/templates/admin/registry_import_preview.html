@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}Registry Import Preview — BFA Scout{% endblock %}
+
+{% set status_color = {
+  'NEW':    '#22C55E',
+  'UPDATE': '#3B82F6',
+  'MERGED': '#8B5CF6',
+  'SKIP':   '#6B7280',
+  'ERROR':  '#C8102E',
+} %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto px-4 py-8">
+
+  <a href="{{ url_for('admin.registry_import_index') }}"
+     class="text-sm mb-4 inline-block" style="color:var(--text-muted);">&larr; Upload</a>
+
+  <h1 class="text-2xl font-bold mb-1" style="color:var(--text);">Registry Import Preview</h1>
+  <p class="text-sm mb-4" style="color:var(--text-muted);">
+    <em>{{ file_name }}</em> — review before writing. Nothing has been saved yet.
+  </p>
+
+  <div class="flex flex-wrap gap-3 mb-6 text-sm">
+    <span class="px-3 py-1 rounded" style="background:#22C55E;color:#fff;">{{ summary.new }} new</span>
+    <span class="px-3 py-1 rounded" style="background:#3B82F6;color:#fff;">{{ summary.updated }} update</span>
+    <span class="px-3 py-1 rounded" style="background:#8B5CF6;color:#fff;">{{ summary.merged }} merged</span>
+    <span class="px-3 py-1 rounded" style="background:#6B7280;color:#fff;">{{ summary.skipped }} skipped</span>
+    <span class="px-3 py-1 rounded" style="background:#C8102E;color:#fff;">{{ summary.errors }} error</span>
+  </div>
+
+  <div class="rounded-xl overflow-hidden mb-6"
+       style="background:var(--surface);border:1px solid var(--border);">
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr style="background:var(--bg);border-bottom:1px solid var(--border);">
+            <th class="px-3 py-2 text-left" style="color:var(--text-muted);">Row</th>
+            <th class="px-3 py-2 text-left" style="color:var(--text-muted);">English name</th>
+            <th class="px-3 py-2 text-left" style="color:var(--text-muted);">CPR</th>
+            <th class="px-3 py-2 text-left" style="color:var(--text-muted);">DOB</th>
+            <th class="px-3 py-2 text-left" style="color:var(--text-muted);">Age group</th>
+            <th class="px-3 py-2 text-left" style="color:var(--text-muted);">Status</th>
+            <th class="px-3 py-2 text-left" style="color:var(--text-muted);">Note</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+            <tr style="border-bottom:1px solid var(--border);">
+              <td class="px-3 py-2" style="color:var(--text-muted);">{{ r.excel_row }}</td>
+              <td class="px-3 py-2" style="color:var(--text);">{{ r.name_en or '—' }}</td>
+              <td class="px-3 py-2 font-mono" style="color:var(--text);">{{ r.cpr or '—' }}</td>
+              <td class="px-3 py-2" style="color:var(--text);">{{ r.dob or '—' }}</td>
+              <td class="px-3 py-2" style="color:var(--text);">{{ r.age_group or '—' }}</td>
+              <td class="px-3 py-2">
+                <span class="px-2 py-0.5 rounded text-xs font-semibold"
+                      style="background:{{ status_color.get(r.status, '#6B7280') }};color:#fff;">
+                  {{ r.status }}
+                </span>
+              </td>
+              <td class="px-3 py-2 text-xs" style="color:var(--text-muted);">{{ r.reason }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="flex items-center gap-3">
+    <form action="{{ url_for('admin.registry_import_commit') }}" method="POST" class="inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit"
+              class="px-5 py-2 rounded text-sm font-semibold text-white"
+              style="background:var(--brand);"
+              {% if summary.to_write == 0 %}disabled{% endif %}>
+        Confirm import ({{ summary.to_write }} player{{ '' if summary.to_write == 1 else 's' }})
+      </button>
+    </form>
+    <a href="{{ url_for('admin.registry_import_discard') }}"
+       class="text-sm" style="color:var(--text-muted);">Discard</a>
+  </div>
+  {% if summary.errors %}
+    <p class="text-xs mt-3" style="color:var(--brand);">
+      {{ summary.errors }} row(s) have errors and will NOT be imported. Fix them in
+      the file and re-upload to include them.
+    </p>
+  {% endif %}
+
+</div>
+{% endblock %}

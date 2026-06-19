@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Registry Import — BFA Scout{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 py-8">
+
+  <a href="{{ url_for('players.list_players') }}"
+     class="text-sm mb-4 inline-block" style="color:var(--text-muted);">&larr; Players</a>
+
+  <h1 class="text-2xl font-bold mb-2" style="color:var(--text);">Player Registry Import</h1>
+  <p class="text-sm mb-6" style="color:var(--text-muted);">
+    Upload the BFA <strong>Player Registry</strong> Excel file
+    (<code>.xlsx</code>, sheet <code>➡ Player Registry</code>). The server
+    reads it, normalizes each CPR to 9 digits, parses dates, and shows a
+    preview with per-row status — nothing is written until you confirm.
+    Players are keyed by <strong>CPR</strong>; the highest age group wins
+    on conflict; re-importing the same file is idempotent.
+  </p>
+
+  {% if pending %}
+    <div class="rounded-xl p-4 mb-4" style="background:var(--accent);color:var(--bg);">
+      <p class="text-sm font-semibold mb-2">
+        You have a pending registry import: <em>{{ pending.file_name }}</em>
+        ({{ pending.summary.total_rows }} rows).
+      </p>
+      <div class="flex gap-2">
+        <a href="{{ url_for('admin.registry_import_preview') }}"
+           class="px-3 py-1 rounded text-sm font-semibold"
+           style="background:var(--bg);color:var(--text);">Continue</a>
+        <a href="{{ url_for('admin.registry_import_discard') }}"
+           class="px-3 py-1 rounded text-sm font-semibold"
+           style="background:transparent;color:var(--bg);border:1px solid var(--bg);">Discard</a>
+      </div>
+    </div>
+  {% endif %}
+
+  <form action="{{ url_for('admin.registry_import_upload') }}"
+        method="POST" enctype="multipart/form-data"
+        class="rounded-xl p-6"
+        style="background:var(--surface);border:1px solid var(--border);">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="block text-sm font-semibold mb-2" style="color:var(--text);">
+      Select the Player Registry file (.xlsx)
+    </label>
+    <input type="file" name="file" accept=".xlsx" required class="block mb-4">
+    <button type="submit"
+            class="px-5 py-2 rounded text-sm font-semibold text-white"
+            style="background:var(--brand);">
+      Upload &amp; preview
+    </button>
+  </form>
+
+  <details class="rounded-lg p-3 mt-6"
+           style="background:var(--surface);border:1px solid var(--border);">
+    <summary class="cursor-pointer text-sm font-semibold" style="color:var(--accent);">
+      Expected columns (row 4 onward)
+    </summary>
+    <ul class="mt-2 text-xs" style="color:var(--text-muted);">
+      <li>A — Full Name (Arabic)</li>
+      <li>B — Full Name (English) · required</li>
+      <li>C — CPR · the master key, normalized to 9-digit text</li>
+      <li>D — Date of Birth · DD/MM/YYYY (unreadable → left blank + warned)</li>
+      <li>E — Age Group · U17 / U20 / U23 / senior (blank → senior)</li>
+      <li>F — Notes · rows marked "Example only" are skipped</li>
+    </ul>
+  </details>
+
+</div>
+{% endblock %}

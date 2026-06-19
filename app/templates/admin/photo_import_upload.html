@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Photo Import — BFA Scout{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 py-8">
+
+  <a href="{{ url_for('players.list_players') }}"
+     class="text-sm mb-4 inline-block" style="color:var(--text-muted);">&larr; Players</a>
+
+  <h1 class="text-2xl font-bold mb-2" style="color:var(--text);">Bulk Photo Import</h1>
+  <p class="text-sm mb-6" style="color:var(--text-muted);">
+    Upload player photos named by <strong>CPR</strong> (e.g.
+    <code>041209370.jpg</code>). Each file is matched to a player by CPR —
+    leading zeros are restored automatically, so <code>41209370.jpg</code>
+    also matches player <code>041209370</code>. You'll see a preview of
+    matches before anything is uploaded. Accepted: JPG, PNG, GIF, WebP.
+  </p>
+
+  {% if pending %}
+    <div class="rounded-xl p-4 mb-4" style="background:var(--accent);color:var(--bg);">
+      <p class="text-sm font-semibold mb-2">
+        You have a pending photo import ({{ pending.summary.total }} file(s)).
+      </p>
+      <div class="flex gap-2">
+        <a href="{{ url_for('admin.photo_import_preview') }}"
+           class="px-3 py-1 rounded text-sm font-semibold"
+           style="background:var(--bg);color:var(--text);">Continue</a>
+        <a href="{{ url_for('admin.photo_import_discard') }}"
+           class="px-3 py-1 rounded text-sm font-semibold"
+           style="background:transparent;color:var(--bg);border:1px solid var(--bg);">Discard</a>
+      </div>
+    </div>
+  {% endif %}
+
+  <form action="{{ url_for('admin.photo_import_upload') }}"
+        method="POST" enctype="multipart/form-data"
+        class="rounded-xl p-6"
+        style="background:var(--surface);border:1px solid var(--border);">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="block text-sm font-semibold mb-2" style="color:var(--text);">
+      Select image files (you can pick many)
+    </label>
+    <input type="file" name="files" accept="image/*" multiple required class="block mb-4">
+    <button type="submit"
+            class="px-5 py-2 rounded text-sm font-semibold text-white"
+            style="background:var(--brand);">
+      Upload &amp; preview matches
+    </button>
+  </form>
+
+</div>
+{% endblock %}

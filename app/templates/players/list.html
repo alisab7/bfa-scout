@@ -17,6 +17,19 @@
            title="Upload a CSV or Excel file with many players at once">
           Bulk import
         </a>
+        {# Registry import: the BFA Player Registry .xlsx (CPR-keyed, sets age_group). #}
+        <a href="{{ url_for('admin.registry_import_index') }}"
+           class="inline-block px-4 py-2 rounded font-semibold text-sm"
+           style="background:var(--bg);color:var(--text);border:1px solid var(--border);"
+           title="Upload the BFA Player Registry Excel (matched by CPR)">
+          Registry import
+        </a>
+        <a href="{{ url_for('admin.photo_import_index') }}"
+           class="inline-block px-4 py-2 rounded font-semibold text-sm"
+           style="background:var(--bg);color:var(--text);border:1px solid var(--border);"
+           title="Bulk-upload player photos named by CPR">
+          Photo import
+        </a>
       {% endif %}
       {% if current_user.role in ('admin', 'technical_director', 'scout', 'nt_staff') %}
         <a href="{{ url_for('players.new_player') }}"
