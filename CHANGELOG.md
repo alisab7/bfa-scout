@@ -1,5 +1,69 @@
 # Changelog
 
+## v1.2.0 — Youth NT section (U17/U20/U23) + restricted youth_nt role (2026-06-20)
+
+Board-level expansion: youth scouting added as a dedicated section, plus
+the codebase's **first restricted role** — `youth_nt`, which can see
+**only** youth players. This is a governance/data-separation boundary, so
+enforcement is at the **query level + real 403s**, never hidden-UI-only.
+
+### What landed
+- **Data layer** — `players.age_group VARCHAR(16) DEFAULT 'senior'`
+  (`CHECK age_group IS NULL OR IN ('U17','U20','U23','senior')`), index
+  `idx_players_age_group`, all existing players backfilled to `'senior'`.
+  `users_role_check` widened (additive) to admit `youth_nt`. Idempotent
+  DO-block migration `migrations/phase_youth_nt.sql` (+ `_apply_youth_nt.py`),
+  mirrored into `schema.sql`. NO invalid `ADD CONSTRAINT IF NOT EXISTS`.
+- **Youth section** — new `app/youth/` blueprint: `/youth` landing (U17/
+  U20/U23 cards + live counts), `/youth/<group>` squad tables, and
+  `/youth/<group>/new` (create with age_group FIXED to the sub-view's
+  group). Templates `youth/index.html`, `youth/squad.html`, `youth/new.html`.
+  Visible to all working roles except viewer (incl. youth_nt).
+- **General list filter** — `/players` (and `/players/compare` search)
+  exclude youth: `age_group = 'senior' OR age_group IS NULL` (NULL-safe).
+  Youth players are reachable only via the youth section.
+- **Age-group management** — squad selector on the player edit form,
+  gated to senior staff (admin/TD/nt_staff). scout + youth_nt cannot
+  change age_group (field ignored). Promotion to 'senior' moves a player
+  back to the general list and out of youth_nt's visibility.
+- **Restricted role + guards** (`app/auth/decorators.py`): `YOUTH_GROUPS`,
+  `youth_section_access`, `youth_manage_required`, `deny_youth_nt`
+  (route-level 403), `require_youth_access(player)` (object-level 403 for
+  youth_nt on non-youth players). Applied to player profile/edit/
+  deactivate/evaluate/eval-view; `/players` list, `/players/new`,
+  `/compare`, `/nt`, `/nt/residents`, `/admin/*`, passport, wyscout,
+  reports, api, ai all 403 youth_nt. youth_nt landing page = `/youth`.
+- **Nav + labels** — Youth NT nav link (desktop + mobile) for all working
+  roles except viewer; youth_nt sees ONLY the Youth NT link. `youth_nt`
+  added to `ROLE_LABELS`/`VALID_ROLES` and the role-badge colour map.
+
+### (1.5) catches surfaced before building
+- **`age_group` name/casing collision (flagged).** `matches.age_group`
+  already existed (lowercase `senior/u23/u20/u17`, = the match's level).
+  The new `players.age_group` is UPPERCASE per spec and means the player's
+  squad — different table, different semantics. Followed the spec exactly
+  and isolated the two; flagged the dual convention.
+- **Boundary wider than the spec's route table.** `/compare` (was
+  `@any_authenticated` — already excludes youth_nt), passport (was
+  `@login_required` only → would have leaked any senior player's PDF),
+  wyscout, reports/api/ai were additional surfaces. Locked all via
+  deny-by-default for the restricted role.
+- **CRUD-vs-promotion tension.** youth_nt "creates" only inside a youth
+  sub-view (age_group fixed); promotion stays senior-staff only.
+- **NULL-unsafe exclusion filter.** `age_group NOT IN (...)` would hide
+  NULL rows; used `= 'senior' OR IS NULL` + `DEFAULT 'senior'` instead.
+
+### Verification
+- `migrations/_e2e_youth_functional.py` — Suite A, **28/28** (functional).
+- `migrations/_e2e_youth_security.py` — Suite B, **24/24** (security HARD
+  GATE: youth_nt cannot reach any non-youth data by any probed route).
+- Regression: residents 15/0, phase_7 29/0, phase_7.1 8/0, 5c2.1 48/0,
+  5d 26/0, 5d-patch 29/0, 6.2.3 16/0, v1.0.2 audit all-pass (two stale
+  audit assertions refreshed: role count is now 6, and a pre-existing
+  false-negative `scout_or_above` check was fixed to match the assignment
+  line). Pre-existing 5c3 "flag emoji" failures are unrelated drift from
+  Phase 6.2.3 (emoji → SVG flags), not the youth filter.
+
 ## v1.1.0 — Residents view for the coaching team (/nt/residents) (2026-06-01)
 
 A second coaching-team track alongside the existing `/nt` (citizens).

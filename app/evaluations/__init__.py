@@ -21,8 +21,10 @@ from flask import (Blueprint, render_template, request, redirect, url_for,
 from flask_login import current_user
 
 from app.auth.decorators import (
-    scout_or_above, any_authenticated, admin_or_td_required
+    scout_or_above, any_authenticated, admin_or_td_required,
+    youth_section_access, require_youth_access,
 )
+from flask_login import login_required
 from app.auth.audit import log_audit
 from app.db import get_db
 from app.evaluations.helpers import (
@@ -60,7 +62,7 @@ def _load_player(player_id: int):
             """
             SELECT pl.id, pl.full_name, pl.full_name_ar, pl.dob,
                    pl.primary_position_id, pl.is_active,
-                   pl.nationality_code,
+                   pl.nationality_code, pl.age_group,
                    p.code  AS position_code, p.name AS position_name,
                    pg.id   AS position_group_id, pg.code AS group_code,
                    pg.name_en AS group_name
@@ -104,11 +106,14 @@ def _criteria_grouped(criteria_rows: list[dict]) -> list[dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 @bp.route('/players/<int:player_id>/evaluate', methods=['GET', 'POST'])
-@scout_or_above
+@youth_section_access
 def evaluate(player_id):
     player = _load_player(player_id)
     if not player or not player["is_active"]:
         abort(404)
+
+    # Youth NT: youth_nt may only evaluate youth players (object-scoped).
+    require_youth_access(player)
 
     pos_group_id = player["position_group_id"]
     if pos_group_id is None:
@@ -194,8 +199,13 @@ def _handle_form_post(player, pos_group_id):
 # ─────────────────────────────────────────────────────────────────────────────
 
 @bp.route('/evaluations/<int:eval_id>')
-@any_authenticated
+@login_required
 def view(eval_id):
+    # @login_required (not @any_authenticated) so youth_nt can reach this
+    # for THEIR youth players; require_youth_access then 403s youth_nt on
+    # any non-youth player's evaluation. No existing role is weakened —
+    # login_required is a superset of any_authenticated's role set.
+    #
     # Phase 7: scout role can't read NT evaluations even by direct ID.
     # `get_evaluation` returns None for scout-viewing-NT, same shape
     # as not-found — so a scout cannot probe for the existence of an
@@ -203,6 +213,9 @@ def view(eval_id):
     ev = get_evaluation(eval_id, requesting_user_role=current_user.role)
     if not ev:
         abort(404)
+
+    # Youth NT: object-scope youth_nt to youth players' evaluations only.
+    require_youth_access(ev)
     scores   = get_evaluation_scores(eval_id)
     criteria = get_form_criteria(ev["position_group_id"])
     sections = _criteria_grouped(criteria)

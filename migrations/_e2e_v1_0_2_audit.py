@@ -139,9 +139,14 @@ check(
 valid_roles_match = re.search(r'VALID_ROLES\s*=\s*\(([^)]+)\)', admin_users)
 if valid_roles_match:
     roles_str = valid_roles_match.group(1)
+    # Youth NT update: VALID_ROLES grew to 6 with the addition of the
+    # restricted 'youth_nt' role. Assert the v1.0.2 roles are still all
+    # present (the audit's real intent) rather than a frozen count.
+    _expected_v102 = ('admin', 'technical_director', 'scout', 'viewer', 'nt_staff')
     check(
-        'admin.users: VALID_ROLES has exactly 5 entries',
-        roles_str.count("'") // 2 == 5,
+        'admin.users: VALID_ROLES still contains all v1.0.2 roles (+youth_nt)',
+        all(f"'{r}'" in roles_str for r in _expected_v102)
+        and "'youth_nt'" in roles_str,
         f'found: {roles_str.strip()}',
     )
 
@@ -296,10 +301,15 @@ print('\n── Audit 2b: role-gated UI conditionals (static) ──────
 
 decorators_py = (BASE / 'app' / 'auth' / 'decorators.py').read_text()
 
-# Backend: scout_or_above must include nt_staff
+# Backend: scout_or_above must include nt_staff.
+# Match the ASSIGNMENT line specifically — the previous split-on-substring
+# check landed on the explanatory comment above the definition (which says
+# "NT staff", not "'nt_staff'") and produced a false negative.
+_soa_match = re.search(r"scout_or_above\s*=\s*role_required\(([^)]*)\)", decorators_py)
 check(
     "decorators.py: scout_or_above includes 'nt_staff'",
-    "scout_or_above" in decorators_py and "'nt_staff'" in decorators_py.split('scout_or_above')[1].split('\n')[0],
+    bool(_soa_match) and "'nt_staff'" in _soa_match.group(1),
+    f"defn: {_soa_match.group(1).strip() if _soa_match else 'NOT FOUND'}",
 )
 
 # Lock/unlock actions must remain admin/TD only (NOT widened to nt_staff)

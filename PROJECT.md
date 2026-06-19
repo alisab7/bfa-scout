@@ -34,10 +34,38 @@
 | **Phase 9: Bulk player import** | **✅ Complete** | CSV + Excel; pandas parser; preview-first UX; composite duplicate detection; transactional commit; 500-row cap; 46/46 E2E |
 | **Phase 8: Production deployment** | **✅ Complete (Cowork-side)** | Docker + compose + nginx + Spaces photo storage + healthz + backup cron + DEPLOY.md. v1.0.0. Droplet provisioning + SSH deploy tracked in DEPLOY.md |
 | **Phase 8.1: Security hardening** | **✅ Complete** | nginx login rate limit (10/min, burst 5); password complexity (≥12, upper+lower+digit); 8hr sliding session timeout + secure cookie flags. v1.0.1 |
+| **Youth NT section + restricted youth_nt role** | **✅ Complete** | `players.age_group` (U17/U20/U23/senior); `/youth` section; general list excludes youth; first restricted role `youth_nt` (sees only youth, query-level + 403s); 28/28 functional + 24/24 security E2E. v1.2.0 |
 | Phase 8.2: Auth hardening v2 | Queued (v1.1) | CSRF token review, password reset email, 2FA/MFA |
 | Phase 10: AI features | Queued (post-v1) | Gemini integration |
 
 ## Current phase
+
+**Youth NT section + restricted youth_nt role — complete. v1.2.0.**
+
+The codebase's first **restricted role**. `youth_nt` users see ONLY
+youth players (U17/U20/U23); every other surface (general list, compare,
+NT workspaces, admin, passport, wyscout, reports/api/ai) returns a real
+403. Enforcement is query-level + 403s (`require_youth_access(player)`
+object guard + `deny_youth_nt` route guard in `app/auth/decorators.py`),
+never hidden-UI-only — it's a board-level data-separation boundary.
+
+- **Schema:** `players.age_group VARCHAR(16) DEFAULT 'senior'` (CHECK
+  U17/U20/U23/senior or NULL); `users_role_check` widened for `youth_nt`.
+  Migration `migrations/phase_youth_nt.sql` (idempotent DO-block).
+  ⚠️ `players.age_group` is UPPERCASE; the unrelated `matches.age_group`
+  is lowercase (match level, not squad) — intentionally distinct.
+- **Surfaces:** `app/youth/` blueprint (`/youth`, `/youth/<group>`,
+  `/youth/<group>/new`); general `/players` + compare exclude youth
+  (`age_group = 'senior' OR IS NULL`); edit-form age-group selector for
+  senior staff only (promotion). youth_nt lands on `/youth`.
+- **Verification:** Suite A `_e2e_youth_functional.py` 28/28; Suite B
+  (HARD GATE) `_e2e_youth_security.py` 24/24; prior suites regress clean.
+- **Recommended:** a one-time manual browser spot-check post-deploy —
+  log in as a youth_nt test user and actively try to reach senior data
+  by direct URL (automated gate is green, but a human probe is warranted
+  for a governance boundary).
+
+---
 
 **Residents view (/nt/residents) — complete. v1.1.0.**
 

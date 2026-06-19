@@ -7,7 +7,10 @@ from flask import (
 )
 from flask_login import login_required, current_user
 
-from app.auth.decorators import scout_or_above, any_authenticated
+from app.auth.decorators import (
+    scout_or_above, any_authenticated, youth_section_access,
+    deny_youth_nt, require_youth_access, YOUTH_GROUPS,
+)
 from app.auth.audit import log_audit
 from app.db import get_db
 
@@ -127,6 +130,10 @@ def _search_players(q, pos_id, elig=None, nat=None, club=None):
             LEFT JOIN position_groups pg ON pg.id = p.position_group_id
             LEFT JOIN clubs c            ON c.id = pl.club_id
             WHERE  pl.is_active = TRUE
+              -- Youth NT: youth players (U17/U20/U23) live ONLY in the
+              -- /youth section and never appear on the general list.
+              -- NULL-safe: senior + legacy-NULL stay visible.
+              AND  (pl.age_group = 'senior' OR pl.age_group IS NULL)
               AND  (%s = '' OR pl.full_name    ILIKE %s
                             OR pl.full_name_ar ILIKE %s
                             OR pl.national_id  ILIKE %s)
@@ -167,6 +174,7 @@ def _validate_photo(f):
 
 @bp.route('/')
 @login_required
+@deny_youth_nt
 def list_players():
     q       = request.args.get('q',    '').strip()
     pos_str = request.args.get('pos',  '').strip()
@@ -401,6 +409,7 @@ def player_profile(player_id):
                    pl.primary_position_id, pl.dob, pl.current_club,
                    pl.nationality, pl.height_cm, pl.weight_kg, pl.notes,
                    pl.is_active, pl.created_at, pl.updated_at,
+                   pl.age_group,
                    -- Phase 5c-1 + 5c-2 eligibility fields
                    pl.nationality_status, pl.eligible_from_date,
                    pl.eligibility_notes_admin,
@@ -423,6 +432,9 @@ def player_profile(player_id):
     if not player:
         abort(404)
 
+    # Youth NT: a youth_nt user may only view youth players' profiles.
+    require_youth_access(player)
+
     # Phase 5c-3: bio counts (filters soft-deleted evaluations)
     # Phase 7: NT-staff evals excluded from the count for scout viewers.
     from app.evaluations.helpers import get_player_bio_counts
@@ -434,7 +446,7 @@ def player_profile(player_id):
 
 
 @bp.route('/<int:player_id>/edit', methods=['GET', 'POST'])
-@scout_or_above
+@youth_section_access
 def edit_player(player_id):
     conn = get_db()
     with conn.cursor() as cur:
@@ -443,6 +455,7 @@ def edit_player(player_id):
             SELECT pl.id, pl.full_name, pl.full_name_ar, pl.national_id,
                    pl.primary_position_id, pl.dob, pl.current_club,
                    pl.nationality, pl.height_cm, pl.weight_kg, pl.notes, pl.is_active,
+                   pl.age_group,
                    pl.nationality_status, pl.eligible_from_date, pl.eligibility_notes_admin,
                    pl.bahrain_residency_start_date, pl.bahrain_residency_notes,
                    pl.nationality_code, pl.club_id
@@ -455,6 +468,15 @@ def edit_player(player_id):
 
     if not player:
         abort(404)
+
+    # Youth NT: youth_nt may only edit youth players (object-scoped).
+    require_youth_access(player)
+
+    # Age-group management (promotion) is senior-staff only: admin / TD /
+    # nt_staff. scout + youth_nt can edit the player but NOT change the
+    # age_group — that field is ignored for them.
+    can_manage_age_group = current_user.has_role(
+        'admin', 'technical_director', 'nt_staff')
 
     position_groups = _load_position_picker()
     from app.players.clubs import get_clubs_grouped
@@ -506,6 +528,18 @@ def edit_player(player_id):
         else:
             club_id = None
             current_club = None  # explicit blank
+
+        # Youth NT: age_group (promotion) is senior-staff only. For users
+        # who may manage it, validate the submitted value; otherwise keep
+        # the player's existing group untouched (input ignored).
+        new_age_group = player['age_group']
+        if can_manage_age_group:
+            submitted_ag = (request.form.get('age_group') or '').strip()
+            if submitted_ag:
+                if submitted_ag in YOUTH_GROUPS or submitted_ag == 'senior':
+                    new_age_group = submitted_ag
+                else:
+                    errors['age_group'] = 'Invalid age group.'
 
         # Phase 5c-1: NT-eligibility fields are admin/TD only — others' input is ignored.
         is_admin_td = current_user.has_role('admin', 'technical_director')
@@ -612,6 +646,7 @@ def edit_player(player_id):
                         form=request.form,
                         orphan_confirm=True,
                         orphan_count=orphan_count,
+                        can_manage_age_group=can_manage_age_group,
                     )
                 if decision == 'delete' and orphan_count > 0:
                     delete_orphan_scores(conn, player_id, new_pos_group_id)
@@ -641,6 +676,7 @@ def edit_player(player_id):
                                bahrain_residency_start_date = %s,
                                bahrain_residency_notes = %s,
                                nationality_code = %s, club_id = %s,
+                               age_group = %s,
                                updated_at = NOW()
                         WHERE  id = %s
                         """,
@@ -650,6 +686,7 @@ def edit_player(player_id):
                          nationality_status, eligible_from_date, eligibility_notes_admin,
                          bahrain_residency_start_date, bahrain_residency_notes,
                          nationality_code, club_id,
+                         new_age_group,
                          player_id)
                     )
                 else:
@@ -661,13 +698,14 @@ def edit_player(player_id):
                                current_club = %s,
                                height_cm = %s, weight_kg = %s, notes = %s,
                                nationality_code = %s, club_id = %s,
+                               age_group = %s,
                                updated_at = NOW()
                         WHERE  id = %s
                         """,
                         (full_name, full_name_ar or None, national_id, dob,
                          primary_position_id, nationality, current_club,
                          height_cm, weight_kg, notes,
-                         nationality_code, club_id, player_id)
+                         nationality_code, club_id, new_age_group, player_id)
                     )
             conn.commit()
 
@@ -690,7 +728,8 @@ def edit_player(player_id):
                            clubs_premier=clubs_grouped.get('premier', []),
                            clubs_first=clubs_grouped.get('first', []),
                            errors=errors,
-                           form=request.form)
+                           form=request.form,
+                           can_manage_age_group=can_manage_age_group)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -726,6 +765,9 @@ def compare_search():
             LEFT JOIN positions p        ON p.id  = pl.primary_position_id
             LEFT JOIN position_groups pg ON pg.id = p.position_group_id
             WHERE  pl.is_active = TRUE
+              -- Youth NT: youth players excluded from compare (a general
+              -- senior surface; youth_nt is blocked from it entirely).
+              AND  (pl.age_group = 'senior' OR pl.age_group IS NULL)
               AND  (pl.full_name    ILIKE %s
                  OR pl.full_name_ar ILIKE %s
                  OR pl.current_club ILIKE %s)
@@ -884,18 +926,21 @@ def compare_scout_section():
 
 
 @bp.route('/<int:player_id>/deactivate', methods=['POST'])
-@scout_or_above
+@youth_section_access
 def deactivate(player_id):
     conn = get_db()
     with conn.cursor() as cur:
         cur.execute(
-            'SELECT id, full_name FROM players WHERE id = %s AND is_active = TRUE',
+            'SELECT id, full_name, age_group FROM players WHERE id = %s AND is_active = TRUE',
             (player_id,)
         )
         player = cur.fetchone()
 
     if not player:
         abort(404)
+
+    # Youth NT: youth_nt may only deactivate youth players.
+    require_youth_access(player)
 
     with conn.cursor() as cur:
         cur.execute(

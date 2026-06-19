@@ -86,6 +86,10 @@ def create_app(config_class=Config):
     from .nt import bp as nt_bp
     app.register_blueprint(nt_bp)
 
+    # Youth NT section (U17/U20/U23) + restricted youth_nt role.
+    from .youth import bp as youth_bp
+    app.register_blueprint(youth_bp)
+
     # Phase 8: healthcheck for Docker / Cloudflare / deploy gate.
     from .healthz import healthz_bp
     app.register_blueprint(healthz_bp)
@@ -193,6 +197,10 @@ def create_app(config_class=Config):
         from flask import render_template
         if not current_user.is_authenticated:
             return redirect(url_for('auth.login'))
+        # Youth NT is a restricted role — its landing page is the youth
+        # section, not the general dashboard (which links to senior data).
+        if current_user.role == 'youth_nt':
+            return redirect(url_for('youth.index'))
         return render_template('index.html')
 
     @app.route('/health')

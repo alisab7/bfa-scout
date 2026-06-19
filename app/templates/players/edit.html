@@ -180,6 +180,27 @@
       {% endif %}
     </div>
 
+    {# ── Squad age-group (promotion) — senior staff only: admin / TD / nt_staff ── #}
+    {% if can_manage_age_group %}
+      <div>
+        <label class="block text-sm font-medium mb-1" style="color:var(--text-muted);">Squad / Age Group</label>
+        {% set cur_ag = form.get('age_group', player.age_group or 'senior') %}
+        <select name="age_group" class="w-full">
+          <option value="senior" {% if cur_ag == 'senior' %}selected{% endif %}>Senior (general list)</option>
+          <option value="U23"    {% if cur_ag == 'U23' %}selected{% endif %}>U23 (youth)</option>
+          <option value="U20"    {% if cur_ag == 'U20' %}selected{% endif %}>U20 (youth)</option>
+          <option value="U17"    {% if cur_ag == 'U17' %}selected{% endif %}>U17 (youth)</option>
+        </select>
+        <p class="text-xs mt-1" style="color:var(--text-muted);">
+          Moving to a youth group removes the player from the general list and
+          places them in the Youth NT section. Promoting to Senior does the reverse.
+        </p>
+        {% if errors.age_group %}
+          <p class="text-xs mt-1" style="color:var(--brand);">{{ errors.age_group }}</p>
+        {% endif %}
+      </div>
+    {% endif %}
+
     {# ── National-team eligibility (admin / TD only — Phase 5c-1, extended in 5c-2) ── #}
     {% if current_user.has_role('admin', 'technical_director') %}
       <fieldset class="rounded-lg p-4 mt-2"

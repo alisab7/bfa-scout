@@ -29,6 +29,13 @@ from app.wyscout.aggregations import (
 bp = Blueprint('wyscout', __name__)
 log = logging.getLogger(__name__)
 
+
+@bp.before_request
+def _deny_youth_nt():
+    """Youth NT cannot reach wyscout (senior player-data surface). Real 403."""
+    if current_user.is_authenticated and current_user.role == 'youth_nt':
+        abort(403)
+
 ALLOWED_EXTENSIONS = {'xlsx', 'xls'}
 MAX_UPLOAD_BYTES    = 20 * 1024 * 1024   # 20 MB
 

@@ -67,12 +67,22 @@
       <!-- Middle: primary nav (authenticated, desktop) -->
       {% if current_user.is_authenticated %}
         <div class="hidden md:flex items-center gap-6 text-sm font-medium">
+          {# Youth NT (restricted role) sees ONLY the Youth NT link — no
+             general players, compare, NT or users surfaces. #}
+          {% if current_user.role != 'youth_nt' %}
           <a href="{{ url_for('players.list_players') }}"
              class="transition-opacity hover:opacity-80"
              style="color:var(--text);">Players</a>
           <a href="{{ url_for('players.compare_form') }}"
              class="transition-opacity hover:opacity-80"
              style="color:var(--text);">Compare</a>
+          {% endif %}
+          {# Youth NT section — all working roles except viewer, incl. youth_nt. #}
+          {% if current_user.has_role('admin', 'technical_director', 'scout', 'nt_staff', 'youth_nt') %}
+            <a href="{{ url_for('youth.index') }}"
+               class="transition-opacity hover:opacity-80"
+               style="color:var(--accent);font-weight:600;">Youth NT</a>
+          {% endif %}
           {# Phase 7.1: NT workspace — admin + TD + nt_staff. Scouts
              and viewers don't see the link. Residents view shares the
              same gate. #}
@@ -103,7 +113,8 @@
             'technical_director': '#B5924C',
             'scout':              '#3B82F6',
             'viewer':             '#6B7280',
-            'nt_staff':           '#10B981'
+            'nt_staff':           '#10B981',
+            'youth_nt':           '#8B5CF6'
           } %}
           <span class="hidden sm:inline text-sm" style="color:var(--text-muted);">
             {{ current_user.full_name }}
@@ -145,12 +156,19 @@
       <div :class="open ? 'block' : 'hidden'"
            class="md:hidden px-4 pb-3 space-y-1"
            style="border-top:1px solid var(--border);">
+        {% if current_user.role != 'youth_nt' %}
         <a href="{{ url_for('players.list_players') }}"
            class="block py-2 text-sm font-medium"
            style="color:var(--text);">Players</a>
         <a href="{{ url_for('players.compare_form') }}"
            class="block py-2 text-sm font-medium"
            style="color:var(--text);">Compare</a>
+        {% endif %}
+        {% if current_user.has_role('admin', 'technical_director', 'scout', 'nt_staff', 'youth_nt') %}
+          <a href="{{ url_for('youth.index') }}"
+             class="block py-2 text-sm font-medium"
+             style="color:var(--accent);">Youth NT</a>
+        {% endif %}
         {# Phase 7.1: TD also gets /nt. Residents view shares the gate. #}
         {% if current_user.has_role('admin', 'technical_director', 'nt_staff') %}
           <a href="{{ url_for('nt.index') }}"

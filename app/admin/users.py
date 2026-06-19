@@ -24,7 +24,8 @@ from app.auth.audit import log_audit
 from app.auth.validators import validate_password_strength
 from . import bp
 
-VALID_ROLES = ('admin', 'technical_director', 'scout', 'viewer', 'nt_staff')
+VALID_ROLES = ('admin', 'technical_director', 'scout', 'viewer',
+               'nt_staff', 'youth_nt')
 
 ROLE_LABELS = {
     'admin':               'Admin',
@@ -32,6 +33,7 @@ ROLE_LABELS = {
     'scout':               'Scout',
     'viewer':              'Viewer',
     'nt_staff':            'NT Staff',
+    'youth_nt':            'Youth NT',
 }
 
 

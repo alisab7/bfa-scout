@@ -34,6 +34,14 @@ from app.passport.radar_svg import render_wyscout_radar_svg
 bp = Blueprint('passport', __name__)
 
 
+@bp.before_request
+def _deny_youth_nt():
+    """Youth NT is a restricted role: it cannot pull any player's passport
+    PDF (a senior-scoping surface open to any authenticated user). Real 403."""
+    if current_user.is_authenticated and current_user.role == 'youth_nt':
+        abort(403)
+
+
 def _slugify(name: str) -> str:
     """ASCII slug for filenames. 'Arthur Rezende' → 'arthur-rezende'.
     Strips non-ASCII (Arabic name half is dropped from filename — keep

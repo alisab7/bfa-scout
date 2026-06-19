@@ -20,7 +20,9 @@ CREATE TABLE IF NOT EXISTS users (
                     -- Phase 7: 'nt_staff' added. Constraint widened additively;
                     -- the 4 original roles remain so existing decorators
                     -- (admin_or_td_required, any_authenticated, ...) keep working.
-                    CHECK (role IN ('admin','technical_director','scout','viewer','nt_staff')),
+                    -- Youth NT: 'youth_nt' added — the first RESTRICTED role
+                    -- (sees ONLY youth players). Additive, again.
+                    CHECK (role IN ('admin','technical_director','scout','viewer','nt_staff','youth_nt')),
     phone           VARCHAR(32),
     is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
     last_login_at   TIMESTAMPTZ,
@@ -114,6 +116,14 @@ CREATE TABLE IF NOT EXISTS players (
     -- (when club_id IS NULL).
     nationality_code       CHAR(3),
     club_id                INTEGER REFERENCES clubs(id) ON DELETE SET NULL,
+    -- Youth NT: squad age-group. UPPERCASE values (distinct from
+    -- matches.age_group which is lowercase and means the match level).
+    -- DEFAULT 'senior' keeps new players on the general list unless
+    -- explicitly created inside a youth sub-view. NULL is tolerated
+    -- (treated as senior by the youth-exclusion filter).
+    age_group              VARCHAR(16) DEFAULT 'senior'
+                           CHECK (age_group IS NULL OR
+                                  age_group IN ('U17','U20','U23','senior')),
     is_active              BOOLEAN     NOT NULL DEFAULT TRUE,
     created_by             INTEGER REFERENCES users(id),
     created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -125,6 +135,7 @@ CREATE INDEX IF NOT EXISTS idx_players_national_id ON players(national_id);
 CREATE INDEX IF NOT EXISTS idx_players_active      ON players(is_active);
 CREATE INDEX IF NOT EXISTS idx_players_nationality ON players(nationality_code);
 CREATE INDEX IF NOT EXISTS idx_players_club_id     ON players(club_id);
+CREATE INDEX IF NOT EXISTS idx_players_age_group   ON players(age_group);
 
 
 -- =============================================================

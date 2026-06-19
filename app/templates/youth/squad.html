@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block title %}Youth {{ group }} — BFA Scout{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 py-8">
+
+  <div class="flex items-center gap-3 mb-2">
+    <a href="{{ url_for('youth.index') }}"
+       class="text-sm" style="color:var(--text-muted);">&larr; Youth NT</a>
+    <h1 class="text-2xl font-bold" style="color:var(--text);">{{ group }} Squad</h1>
+  </div>
+
+  {# Group tab strip #}
+  <div class="flex gap-2 my-4 text-sm">
+    {% for g, s in [('U17','u17'), ('U20','u20'), ('U23','u23')] %}
+      <a href="{{ url_for('youth.squad', slug=s) }}"
+         class="px-3 py-1.5 rounded font-semibold"
+         style="{% if g == group %}background:var(--brand);color:#fff;{% else %}background:var(--bg);color:var(--text-muted);border:1px solid var(--border);{% endif %}">
+        {{ g }}
+      </a>
+    {% endfor %}
+    <a href="{{ url_for('youth.new_youth', slug=slug) }}"
+       class="ml-auto px-3 py-1.5 rounded font-semibold text-white"
+       style="background:var(--accent);">+ Add {{ group }} player</a>
+  </div>
+
+  {% if players %}
+    <div class="rounded-xl overflow-hidden"
+         style="background:var(--surface);border:1px solid var(--border);">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr style="background:var(--bg);border-bottom:1px solid var(--border);">
+              <th class="px-4 py-3 text-left" style="color:var(--text-muted);">Player</th>
+              <th class="px-4 py-3 text-left" style="color:var(--text-muted);">Position</th>
+              <th class="px-4 py-3 text-left" style="color:var(--text-muted);">Club</th>
+              <th class="px-4 py-3 text-right" style="color:var(--text-muted);">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in players %}
+              <tr style="border-bottom:1px solid var(--border);">
+                <td class="px-4 py-3">
+                  <a href="{{ url_for('players.player_profile', player_id=p.id) }}"
+                     class="font-semibold" style="color:var(--text);">{{ p.full_name }}</a>
+                  {% if p.full_name_ar %}
+                    <span class="text-xs ml-1" style="color:var(--text-muted);direction:rtl;">{{ p.full_name_ar }}</span>
+                  {% endif %}
+                </td>
+                <td class="px-4 py-3" style="color:var(--text);">
+                  {{ p.position_name or '—' }}
+                  {% if p.group_code %}
+                    <span class="text-xs" style="color:var(--text-muted);">({{ p.group_code }})</span>
+                  {% endif %}
+                </td>
+                <td class="px-4 py-3" style="color:var(--text);">{{ p.club_name or p.current_club or '—' }}</td>
+                <td class="px-4 py-3 text-right">
+                  <a href="{{ url_for('evaluations.evaluate', player_id=p.id) }}"
+                     class="text-sm font-medium" style="color:var(--accent);">Evaluate</a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% else %}
+    <div class="rounded-xl p-6"
+         style="background:var(--surface);border:1px solid var(--border);">
+      <p class="text-sm" style="color:var(--text-muted);">
+        No {{ group }} players yet. Use
+        <a href="{{ url_for('youth.new_youth', slug=slug) }}" style="color:var(--accent);">+ Add {{ group }} player</a>
+        to add the first one.
+      </p>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}
