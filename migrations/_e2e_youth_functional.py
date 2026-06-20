@@ -252,6 +252,7 @@ try:
     tok = get_csrf(youth_op, f"/players/{new_pid}/evaluate")
     s, _, final = http(youth_op, "POST", f"/players/{new_pid}/evaluate",
                        data={"csrf_token": tok, "match_id": str(match_id),
+                             "position_played_id": "1",  # now required (defaults to primary)
                              "action": "save_draft"})
     with db() as conn, conn.cursor() as cur:
         cur.execute("SELECT COUNT(*) AS n FROM evaluations WHERE player_id=%s AND deleted_at IS NULL",

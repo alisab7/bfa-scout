@@ -37,10 +37,34 @@
 | **Youth NT section + restricted youth_nt role** | **✅ Complete** | `players.age_group` (U17/U20/U23/senior); `/youth` section; general list excludes youth; first restricted role `youth_nt` (sees only youth, query-level + 403s); 28/28 functional + 24/24 security E2E. v1.2.0 |
 | **Bulk import: Registry Excel + CPR-matched photos** | **✅ Complete** | `/admin/import/players` (registry `.xlsx` → preview → confirm, CPR-keyed, age-group-highest-wins, idempotent) + `/admin/import/photos` (CPR-filename match, reuses photo pipeline); `app/players/cpr.normalize_cpr` (9-digit TEXT); admin-only; 24/24 E2E. v1.3.0 |
 | **Registry import: nationality mapping** | **✅ Complete** | Age Group → age_group + nationality_status + nationality + nationality_code. Citizens (U17/U20/U23/NT/senior) auto Bahrain/BHR; residents (residency) take nationality + 3-letter code from the file (required+validated); NT accepted; INSERT+UPDATE write all four (re-import corrects NULLs); 40/40 E2E. v1.3.1 |
+| **Eligibility badge "Citizen"** | **✅ Complete** | bahraini/foreign_ancestry → "Citizen" (not "Eligible now", reserved for residency past-date). Single source `compute_eligibility_status`. v1.3.2 |
+| **/nt senior-only + name search** | **✅ Complete** | /nt restricted to age_group=senior (NULL-safe); client-side Alpine live EN/Arabic name search. v1.3.3 |
+| **Evaluations: position played in match** | **✅ Complete** | Required per-evaluation match-position dropdown (positions table, defaults to primary); persisted on `evaluations.position_played_id`; shown on view + history. Display-only — criteria + registered position unchanged. 13/13 E2E. v1.4.0 |
 | Phase 8.2: Auth hardening v2 | Queued (v1.1) | CSRF token review, password reset email, 2FA/MFA |
 | Phase 10: AI features | Queued (post-v1) | Gemini integration |
 
 ## Current phase
+
+**Evaluations: position played in the match — complete. v1.4.0.**
+
+Each evaluation records the position the player actually played that match
+(`evaluations.position_played_id`, an existing-but-previously-unused FK to
+`positions`). Required dropdown on the eval form, defaulting to the
+player's registered primary position, reusing the players' grouped
+position picker. Shown on the eval view ("Position played: …") and on the
+per-player history cards ("· played CODE"). **Display-only**: criteria are
+still driven by `position_group_id` (the player's group) and the player's
+registered position is never changed. No DDL — the column existed in
+schema.sql; the migration just backfills existing rows to primary
+position. `migrations/_e2e_eval_position.py` 13/13; prior eval suites
+(5c2.1/5d/5d-1/5d-patch) + full regression green.
+
+**Deploy note (Ali):** no schema change vs. the live DB (column already
+present). Run `migrations/eval_position_played.sql` once against prod to
+backfill historical evaluations to their players' primary positions, then
+it's a normal code deploy.
+
+---
 
 **Registry import: nationality mapping — complete. v1.3.1.**
 

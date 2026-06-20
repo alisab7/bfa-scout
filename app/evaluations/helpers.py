@@ -145,7 +145,7 @@ def _putconn(conn):
 
 
 # Required fields for submit (per locked decision)
-_REQUIRED_ON_SUBMIT = ("nt_readiness_level", "recommendation")
+_REQUIRED_ON_SUBMIT = ("nt_readiness_level", "recommendation", "position_played_id")
 
 
 def resolve_position_group_for_player(player_id: int) -> int | None:
@@ -305,11 +305,14 @@ def get_evaluation(eval_id: int, include_deleted: bool = False,
                        m.away_team         AS m_away,
                        m.home_score        AS m_home_score,
                        m.away_score        AS m_away_score,
-                       m.competition       AS m_competition
+                       m.competition       AS m_competition,
+                       pp.code             AS position_played_code,
+                       pp.name             AS position_played_name
                 FROM   evaluations e
                 JOIN   players pl ON pl.id = e.player_id
                 JOIN   users   u  ON u.id  = e.evaluator_id
                 LEFT JOIN matches m ON m.id = e.match_id
+                LEFT JOIN positions pp ON pp.id = e.position_played_id
                 WHERE  e.id = %s
             """
             if not include_deleted:
@@ -396,6 +399,7 @@ _META_FIELDS = (
     "comparable_player",
     "minutes_observed",
     "match_id",
+    "position_played_id",   # position played in THIS match (display-only context)
 )
 
 
@@ -496,6 +500,7 @@ def get_player_evaluations(player_id: int,
                 f"""
                 SELECT e.id, e.player_id, e.status,
                        e.evaluator_id, e.position_group_id,
+                       e.position_played_id,
                        e.match_id, e.match_label, e.match_date, e.competition,
                        e.minutes_observed, e.summary, e.recommendation,
                        e.nt_readiness_level, e.eligibility_status,
@@ -510,12 +515,15 @@ def get_player_evaluations(player_id: int,
                        m.match_date       AS m_date,
                        m.home_team        AS m_home,
                        m.away_team        AS m_away,
-                       m.competition      AS m_competition
+                       m.competition      AS m_competition,
+                       pp.code            AS position_played_code,
+                       pp.name            AS position_played_name
                 FROM   evaluations e
                 JOIN   users u  ON u.id  = e.evaluator_id
                 LEFT JOIN users le ON le.id = e.last_edited_by
                 LEFT JOIN users lk ON lk.id = e.locked_by
                 LEFT JOIN matches m ON m.id = e.match_id
+                LEFT JOIN positions pp ON pp.id = e.position_played_id
                 WHERE  e.player_id = %s
                   AND  e.status = ANY(%s)
                   AND  e.deleted_at IS NULL

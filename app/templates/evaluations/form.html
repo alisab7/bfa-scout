@@ -101,6 +101,39 @@
       {% if errors.get('match_id') %}
         <p class="text-xs mt-2" style="color:var(--brand);">{{ errors.match_id }}</p>
       {% endif %}
+      {# Position played in THIS match — required. Defaults to the player's
+         registered primary position; the evaluator can change it per match.
+         Does NOT change the player's registered position or the criteria. #}
+      <div class="mt-4">
+        <label class="block text-xs uppercase tracking-wide mb-1" style="color:var(--text-muted);">
+          Position played <span style="color:var(--brand);">*</span>
+          <span class="block text-[10px] normal-case mt-0.5" style="color:var(--text-muted);">
+            Where they played this match (may differ from registered position)
+          </span>
+        </label>
+        {% set sel_pos = (form_values.get('position_played_id') if form_values else None)
+                         or (draft and draft.get('position_played_id'))
+                         or player.primary_position_id %}
+        <select name="position_played_id" required
+                class="w-full sm:w-72 px-3 py-2 rounded text-sm"
+                style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+          <option value="">— Select position —</option>
+          {% for group in position_groups %}
+            <optgroup label="{{ group.group_name }}">
+              {% for p in group.positions %}
+                <option value="{{ p.pos_id }}"
+                  {% if sel_pos and (sel_pos | string) == (p.pos_id | string) %}selected{% endif %}>
+                  {{ p.pos_code }} · {{ p.pos_name }}
+                </option>
+              {% endfor %}
+            </optgroup>
+          {% endfor %}
+        </select>
+        {% if errors.get('position_played_id') %}
+          <p class="text-xs mt-1" style="color:var(--brand);">{{ errors.position_played_id }}</p>
+        {% endif %}
+      </div>
+
       <div class="mt-4">
         <label class="block text-xs uppercase tracking-wide mb-1" style="color:var(--text-muted);">
           Minutes observed

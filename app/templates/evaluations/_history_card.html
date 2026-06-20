@@ -33,6 +33,9 @@
         {% else %}
           {{ ev.match_label or 'Freestanding evaluation' }}
         {% endif %}
+        {% if ev.position_played_code %}
+          · played <span style="color:var(--text);font-weight:600;">{{ ev.position_played_code }}</span>
+        {% endif %}
         {% if ev.submitted_at %}
           · submitted {{ ev.submitted_at.strftime('%Y-%m-%d') }}
         {% endif %}

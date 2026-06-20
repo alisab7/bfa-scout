@@ -131,6 +131,10 @@ def _render_form(player, pos_group_id, draft=None, scores=None,
     criteria  = get_form_criteria(pos_group_id)
     sections  = _criteria_grouped(criteria)
     matches   = get_recent_matches(RECENT_MATCH_LIMIT)
+    # Reuse the players blueprint's position picker so the match-position
+    # dropdown offers the exact same grouped options as the player forms.
+    from app.players import _load_position_picker
+    position_groups = _load_position_picker()
 
     # Optional ?match_id=... selects a draft to pre-load
     selected_match_id = request.args.get('match_id', type=int)
@@ -148,6 +152,7 @@ def _render_form(player, pos_group_id, draft=None, scores=None,
         sections=sections,
         criteria=criteria,
         matches=matches,
+        position_groups=position_groups,
         recent_match_limit=RECENT_MATCH_LIMIT,
         selected_match_id=selected_match_id,
         draft=draft,
@@ -168,6 +173,15 @@ def _handle_form_post(player, pos_group_id):
         flash("Please pick a match before saving.", "error")
         return _render_form(player, pos_group_id,
                             errors={"match_id": "Match is required."},
+                            form_values=form)
+
+    # Position played in this match is required (mirrors the match rule).
+    # The dropdown defaults to the player's primary position, so this only
+    # trips if it was actively cleared.
+    if not meta.get("position_played_id"):
+        flash("Please select the position the player played in this match.", "error")
+        return _render_form(player, pos_group_id,
+                            errors={"position_played_id": "Position played is required."},
                             form_values=form)
 
     # Phase 7: pass current_user.role so the draft is stamped
@@ -247,6 +261,12 @@ def update_draft(eval_id):
 
     form = request.form
     meta = parse_meta_fields(form)
+    # Position played is required (same rule as the main form path).
+    if not meta.get("position_played_id"):
+        flash("Please select the position the player played in this match.", "error")
+        return redirect(url_for('evaluations.evaluate',
+                                player_id=ev["player_id"],
+                                match_id=ev.get("match_id")))
     save_evaluation_scores(eval_id, parse_score_inputs(form))
     update_evaluation_meta(eval_id, meta)
 

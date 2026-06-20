@@ -31,6 +31,12 @@
           (no match linked)
         {% endif %}
       </p>
+      <p class="text-sm mt-0.5" style="color:var(--text-muted);">
+        Position played:
+        <span style="color:var(--text);font-weight:600;">
+          {% if ev.position_played_code %}{{ ev.position_played_code }}{% if ev.position_played_name %} · {{ ev.position_played_name }}{% endif %}{% else %}—{% endif %}
+        </span>
+      </p>
     </div>
     <div class="flex items-center gap-3">
       <span class="text-xs px-3 py-1 rounded font-semibold uppercase tracking-wide"

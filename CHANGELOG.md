@@ -1,5 +1,56 @@
 # Changelog
 
+## v1.4.0 — Evaluations: record the position played in the match (2026-06-20)
+
+Each evaluation now records the position the player actually played in
+that match — which can differ from their registered primary position (a
+winger fielded at ST). Per-evaluation context, **display-only**: it does
+NOT change the player's registered position and does NOT affect which
+criteria are shown.
+
+### What landed
+- **No schema change** — the `evaluations.position_played_id` column
+  (FK → positions, nullable) already existed in `schema.sql` but was
+  unused; this wires it up. Idempotent data migration
+  `migrations/eval_position_played.sql` (+ `_apply_…py`) ensures the
+  column (no-op `ADD COLUMN IF NOT EXISTS`, NOT the invalid
+  `ADD CONSTRAINT IF NOT EXISTS`) and **backfills** existing rows to each
+  player's primary position (0 rows left NULL).
+- **Form** ([evaluations/form.html](app/templates/evaluations/form.html)) — a required "Position played"
+  dropdown in the match-context block, reusing the players' grouped
+  position picker (`_load_position_picker`), **defaulting to the player's
+  primary position**. Server-side required validation in `_handle_form_post`
+  (mirrors the existing match-required rule) + `update_draft`, plus
+  `position_played_id` added to `_REQUIRED_ON_SUBMIT`.
+- **Write** — `parse_meta_fields` parses it; `update_evaluation_meta`
+  persists it via its field whitelist (existing `conn.commit()` path).
+- **Display** — eval view ([view.html](app/templates/evaluations/view.html)) shows
+  "Position played: CODE · Name"; the per-player history cards
+  ([_history_card.html](app/templates/evaluations/_history_card.html)) show "· played CODE". `get_evaluation` +
+  `get_player_evaluations` join `positions` for the code/name.
+- Criteria still driven by `position_group_id` (the player's group) —
+  **unchanged**; the player's registered primary/secondary position —
+  **unchanged**.
+
+### (1.5) findings
+- Column already present (live DB + schema.sql), FK to positions, nullable,
+  **never read/written** in code (vestigial) — so no DDL, just wiring +
+  backfill.
+- All 7 existing evals had NULL → backfilled to primary position.
+
+### Verification
+- New `migrations/_e2e_eval_position.py` — **13/13**: defaults to primary;
+  saving a different position (ST for an LW winger) persists + shows on
+  view; required-validation rejects a missing position (no draft created);
+  registered primary stays LW; criteria driver (`position_group_id`)
+  unchanged; submitted eval shows the played position in history; no NULLs.
+- Regression: 5c2.1 48/0, 5d 26/0, 5d-1 39/0, 5d-patch 29/0, phase_7 29/0,
+  phase_7.1 8/0, /nt senior+search 11/0, residents 15/0, youth 28/0 + 24/0,
+  eligibility-badge 13/0, bulk-import 40/0, Phase 9 46/0, v1.0.2 audit pass.
+  Updated `_e2e_youth_functional` (6h) to send the now-required position in
+  its evaluate POST. Pre-existing unrelated failures (5c2 lock/orphan;
+  phase_6_2_3 compare-search flag) confirmed identical at HEAD via stash.
+
 ## v1.3.3 — /nt: senior-only squad + live English/Arabic name search (2026-06-20)
 
 Two changes to the National Team squad page (`/nt`). No role/permission

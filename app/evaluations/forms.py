@@ -87,8 +87,18 @@ def parse_meta_fields(form: dict) -> dict:
     except ValueError:
         match_id = None
 
+    # Position the player actually played in THIS match (per-evaluation
+    # context; does NOT change the player's registered position, and does
+    # NOT drive criteria — those still follow position_group_id).
+    pos_played_raw = (form.get("position_played_id") or "").strip()
+    try:
+        position_played_id = int(pos_played_raw) if pos_played_raw else None
+    except ValueError:
+        position_played_id = None
+
     return {
         "match_id":            match_id,
+        "position_played_id":  position_played_id,
         "summary":             (form.get("summary") or "").strip() or None,
         "recommendation":      pick("recommendation", RECOMMENDATION_VALUES),
         "nt_readiness_level":  pick("nt_readiness_level", NT_READINESS_VALUES),
