@@ -1,5 +1,11 @@
 {# Squad table for the /nt workspace.
    Vars in scope: squad (list of dicts from get_eligible_squad_players)
+
+   When rendered inside the /nt page the rows live under an Alpine
+   `x-data` (see nt/index.html) that provides `q` (search query) and the
+   `matches()` helper. Each row carries a lowercased `data-name`
+   ("english arabic") so the client-side filter matches BOTH names. The
+   directives are inert if no Alpine ancestor is present.
 #}
 <div class="rounded-xl overflow-hidden"
      style="background:var(--surface);border:1px solid var(--border);">
@@ -20,7 +26,9 @@
              stays simple. Cheap query — runs once per row at render
              time; cache later if the squad grows beyond a few dozen. #}
           {% set nt_count = get_nt_evaluation_count(p.id) %}
-          <tr style="border-bottom:1px solid var(--border);">
+          <tr style="border-bottom:1px solid var(--border);"
+              data-name="{{ (p.full_name ~ ' ' ~ (p.full_name_ar or '')) | lower }}"
+              x-show="matches($el.dataset.name)">{# client-side name filter (EN+AR) #}
             <td class="px-4 py-3">
               <a href="{{ url_for('players.player_profile', player_id=p.id) }}"
                  class="font-semibold" style="color:var(--text);">

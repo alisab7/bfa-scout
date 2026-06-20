@@ -29,6 +29,13 @@ def get_eligible_squad_players() -> list[dict]:
         suggested date already in the past (CHECK: same FIFA Article 5
         baseline as compute_suggested_eligibility, hard-coded to 5y)
 
+    Restricted to the SENIOR (1st team) squad: `age_group = 'senior'`.
+    Youth players (U17/U20/U23) live on /youth, not here. The filter is
+    NULL-safe — a senior player with a stray NULL age_group is still
+    shown (mirrors the general players-list youth-exclusion semantics),
+    so no 1st-team player is ever wrongly hidden. This is additive: the
+    eligibility logic above is unchanged.
+
     Joins position + group + club for the squad table.
 
     Honours `is_active = TRUE` (deactivated players excluded). Per
@@ -52,6 +59,9 @@ def get_eligible_squad_players() -> list[dict]:
             LEFT JOIN position_groups pg ON pg.id = p.position_group_id
             LEFT JOIN clubs c            ON c.id  = pl.club_id
             WHERE  pl.is_active = TRUE
+              -- Senior (1st team) only; youth live on /youth. NULL-safe so a
+              -- stray-NULL senior is never hidden.
+              AND  (pl.age_group = 'senior' OR pl.age_group IS NULL)
               AND  (
                     pl.nationality_status IN ('bahraini', 'foreign_ancestry')
                  OR (pl.eligible_from_date IS NOT NULL

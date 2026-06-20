@@ -1,5 +1,48 @@
 # Changelog
 
+## v1.3.3 — /nt: senior-only squad + live English/Arabic name search (2026-06-20)
+
+Two changes to the National Team squad page (`/nt`). No role/permission
+or eligibility-logic changes.
+
+### What landed
+- **Senior-only filter** — `get_eligible_squad_players()`
+  ([app/nt/helpers.py](app/nt/helpers.py)) now restricts the squad to the 1st team:
+  `(age_group = 'senior' OR age_group IS NULL)`, **added alongside** the
+  existing eligibility clause (unchanged). Youth (U17/U20/U23) live on
+  `/youth`. NULL-safe so a stray-NULL senior 1st-teamer is never hidden.
+- **Live name search** — a client-side search box at the top of the /nt
+  squad ([nt/index.html](app/templates/nt/index.html)). Each row carries a lowercased
+  `data-name="english arabic"` ([nt/_squad_table.html](app/templates/nt/_squad_table.html)); a small Alpine
+  component (`ntSquadSearch()`) filters rows live as you type, matching
+  **both** English and Arabic names, case-insensitively. Clearing the box
+  restores the full squad; a "no players match" message shows when a query
+  hides everything. Pure client-side — no server round-trip, no
+  localStorage.
+
+### (1.5) findings
+- /nt query had no age_group filter, so an eligible youth player could
+  appear — fixed. Live DB: all active players `senior`, zero NULL → no one
+  hidden by the new filter.
+- /nt/residents (`get_resident_players`) and /youth (`get_youth_squad`)
+  are independent and untouched; nt_staff access unchanged.
+
+### Verification
+- New `migrations/_e2e_nt_senior_search.py` — **11/11** (senior shown;
+  youth excluded but on /youth; **NULL-age senior still shown**; residents
+  + nt_staff /youth access unaffected; search input + EN/AR `data-name`
+  markup present).
+- Regression: residents 15/0, phase_7 29/0, phase_7.1 8/0, youth 28/0 +
+  24/0, eligibility-badge 13/0, bulk-import 40/0, Phase 9 46/0, 5c2.1 48/0,
+  v1.0.2 audit pass.
+- **Data repair (separate from the feature):** restored player 2 (Arthur
+  Rezende) to his canonical `foreign_residency` / residency-since-2020-12-06
+  state. A prior `_e2e_5c2` run had left his `nationality_status` NULL
+  (self-perpetuating: it snapshots whatever it finds), which made phase_7's
+  /nt assertion fail at HEAD too (proven via stash). Restoring the baseline
+  is self-healing — `_e2e_5c2` now captures the correct state and restores
+  it; phase_7 stays green across re-runs.
+
 ## v1.3.2 — Eligibility badge: "Citizen" for bahraini/foreign_ancestry (2026-06-20)
 
 Display-only fix. A Bahraini citizen (or ancestry-eligible player) was

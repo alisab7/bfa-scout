@@ -28,16 +28,61 @@
   </div>
 
   {% if squad %}
-    {% include 'nt/_squad_table.html' %}
+    {# Alpine wrapper: `q` holds the live search query; `matches()` (used
+       by each row's x-show in _squad_table.html) tests the row's
+       data-name against it. Client-side only — no server round-trip,
+       no localStorage. #}
+    <div x-data="ntSquadSearch()">
+      <div class="mb-4">
+        <input type="search" x-model="q"
+               placeholder="Search by name… / بحث بالاسم"
+               aria-label="Search senior squad by name"
+               class="w-full px-3 py-2 rounded text-sm"
+               style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+      </div>
+
+      {% include 'nt/_squad_table.html' %}
+
+      {# Shown only when a non-empty query hides every row. #}
+      <div x-show="q.trim() && !anyVisible" x-cloak style="display:none;"
+           class="rounded-xl p-6 mt-3"
+           style="background:var(--surface);border:1px solid var(--border);">
+        <p class="text-sm" style="color:var(--text-muted);">
+          No players match “<span x-text="q.trim()"></span>”.
+        </p>
+      </div>
+    </div>
   {% else %}
     <div class="rounded-xl p-6"
          style="background:var(--surface);border:1px solid var(--border);">
       <p class="text-sm" style="color:var(--text-muted);">
-        No NT-eligible players in the database yet. As players gain
+        No NT-eligible senior players in the database yet. As players gain
         Bahraini status (or pass the 5-year residency window), they'll
         appear here automatically.
       </p>
     </div>
   {% endif %}
 </div>
+
+<script>
+  function ntSquadSearch() {
+    return {
+      q: '',
+      // True if the row's lowercased "english arabic" name contains the
+      // query. Empty query → every row matches (full squad visible).
+      matches(name) {
+        const t = this.q.trim().toLowerCase();
+        return !t || (name || '').includes(t);
+      },
+      // Reactive (reads this.q) — true if at least one row is visible for
+      // the current query. Drives the "no players match" message.
+      get anyVisible() {
+        const t = this.q.trim().toLowerCase();
+        if (!t) return true;
+        return Array.from(this.$root.querySelectorAll('tr[data-name]'))
+                    .some(tr => (tr.dataset.name || '').includes(t));
+      },
+    };
+  }
+</script>
 {% endblock %}
