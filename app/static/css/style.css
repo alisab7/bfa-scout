@@ -139,6 +139,7 @@ input[type="number"]::-webkit-outer-spin-button {
 
 /* Status colours — dark-theme aware (all using rgba with alpha so they
    blend against --surface and --bg backgrounds) */
+.elig-badge[data-status="citizen"]         { background: rgba(34,  197,  94, 0.18); color: #4ade80; }
 .elig-badge[data-status="eligible_now"]    { background: rgba(34,  197,  94, 0.18); color: #4ade80; }
 .elig-badge[data-status="eligible_future"] { background: rgba(251, 191,  36, 0.18); color: #fcd34d; }
 .elig-badge[data-status="not_eligible"]    { background: rgba(239,  68,  68, 0.18); color: #f87171; }

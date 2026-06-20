@@ -155,16 +155,21 @@ def compute_eligibility_status(player) -> dict:
                 "is_eligible_now": False, "age_at_eligibility": None,
                 "status_code": "not_eligible"}
 
-    # Priority 2: birthright eligibility — eligible regardless of date
+    # Priority 2: birthright eligibility — eligible regardless of date.
+    # These are CITIZENS, not residency players who completed the 5-year
+    # clock, so the badge reads "Citizen" — NOT "Eligible now" (which is
+    # reserved for foreign_residency past their eligible date). They are
+    # still is_eligible_now=True (eligible to play) — only the LABEL differs.
     if nat == "bahraini":
-        return {"icon": "✅", "label": "Eligible now", "note": "Bahraini citizen",
+        return {"icon": "✅", "label": "Citizen",
+                "note": "Bahraini citizen · مواطن",
                 "is_eligible_now": True, "age_at_eligibility": None,
-                "status_code": "eligible_now"}
+                "status_code": "citizen"}
     if nat == "foreign_ancestry":
-        return {"icon": "✅", "label": "Eligible now",
-                "note": "Foreign-eligible (ancestry)",
+        return {"icon": "✅", "label": "Citizen",
+                "note": "Foreign-eligible (ancestry) · مواطن",
                 "is_eligible_now": True, "age_at_eligibility": None,
-                "status_code": "eligible_now"}
+                "status_code": "citizen"}
 
     # Priority 3: explicit eligible_from_date present (overrides residency-derived)
     edate = get("eligible_from_date")

@@ -210,8 +210,10 @@ check("'Status unknown' renders for null state", "Status unknown" in html)
 db_exec("UPDATE players SET nationality_status = 'not_eligible' WHERE id = 2")
 _, html, _ = http(admin, "GET", "/players/2")
 check("'Not eligible' renders for nationality_status=not_eligible", "Not eligible" in html)
-# State 3: Eligible now (past date)
-db_exec("""UPDATE players SET nationality_status = 'bahraini',
+# State 3: Eligible now (past date). Uses foreign_residency, NOT bahraini —
+# birthright statuses short-circuit to "Citizen", so a date-based test must
+# use a residency/other status to exercise the eligible_from_date path.
+db_exec("""UPDATE players SET nationality_status = 'foreign_residency',
                                 eligible_from_date = '2020-01-01' WHERE id = 2""")
 _, html, _ = http(admin, "GET", "/players/2")
 check("'Eligible now' renders for past eligible_from_date", "Eligible now" in html)

@@ -136,8 +136,10 @@ check("eligibility card appears exactly once", n_elig == 1, f"count={n_elig}")
 # Item 2 — priority cases A–G
 print("\n=== Item 2: priority order via profile rendering ===")
 EXPECTED = {
-    "A_BAH":  ("✅", "Eligible now",                  "Bahraini citizen"),
-    "B_ANC":  ("✅", "Eligible now",                  "Foreign-eligible (ancestry)"),
+    # Badge fix: citizens read "Citizen", NOT "Eligible now" (the latter is
+    # reserved for foreign_residency players past their eligible date).
+    "A_BAH":  ("✅", "Citizen",                       "Bahraini citizen"),
+    "B_ANC":  ("✅", "Citizen",                       "Foreign-eligible (ancestry)"),
     "C_RES":  ("⏳", "Eligible in",                   "Article 5"),
     "D_DATE": ("⏳", "Eligible in",                   FUTURE.strftime("%Y-%m-%d")),
     "E_PEND": ("⏳", "Pending — residency start",     "set Bahrain residency"),
@@ -188,7 +190,7 @@ check("eligibility filter dropdown present",
 check("filter has all 5 options",
       all(opt in html for opt in
           ["All eligibility", "Eligible now", "Pending", "Not eligible", "Unknown"]))
-check("test player A appears with ✅ Eligible now",
+check("test player A (bahraini) appears in the list",
       "Test A Bahraini" in html and html.find("Test A Bahraini") > 0)
 check("test player F appears with ❌ Not eligible",
       "Test F Not eligible" in html)

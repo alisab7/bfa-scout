@@ -1,5 +1,99 @@
 # Changelog
 
+## v1.3.2 — Eligibility badge: "Citizen" for bahraini/foreign_ancestry (2026-06-20)
+
+Display-only fix. A Bahraini citizen (or ancestry-eligible player) was
+showing the green badge **"Eligible now"** — a label that belongs to
+*residency* players who have completed the 5-year naturalization clock. A
+born citizen now reads **"Citizen"**.
+
+### What landed
+- **Single source of truth:** `compute_eligibility_status`
+  ([app/players/eligibility.py](app/players/eligibility.py)) — `bahraini` and
+  `foreign_ancestry` now return `label="Citizen"`, `status_code="citizen"`
+  (note carries "Bahraini citizen · مواطن" / "Foreign-eligible (ancestry) ·
+  مواطن"). `is_eligible_now` stays `True` (they ARE eligible) — only the
+  label/colour key changed. `foreign_residency` keeps the date-based
+  Eligible-now / Eligible-in / residency-not-set logic untouched.
+- One fix propagates everywhere the badge renders: the
+  `eligibility_badge` macro (card grid, comparison, search, eval-form
+  header) and the profile eligibility card — both consume the same helper.
+- **CSS:** new `.elig-badge[data-status="citizen"]` (green, same palette as
+  eligible-now) in [style.css](app/static/css/style.css).
+- `/nt` squad table already special-cased citizens inline ("Bahraini
+  citizen"), and `/nt/residents` is foreign_residency-only — both
+  unaffected. The passport PDF has its own separate label logic (out of
+  scope; not the inline badge).
+
+### (1.5) findings
+- The badge label has a single source (`compute_eligibility_status`);
+  `status_code` only drives CSS colour (no logic branches on it), so adding
+  a `citizen` status was safe.
+- `bahraini` hit "Eligible now" because Priority-2 (birthright) reused the
+  eligible-now label/status; fixed there.
+
+### Verification
+- New `migrations/_e2e_eligibility_badge.py` — **13/13** (rendered profile
+  card + list-grid `data-status`): bahraini/ancestry → "Citizen" (not
+  "Eligible now"); residency past → "Eligible now"; future → "Eligible in";
+  no-date → residency-not-set; not_eligible / unknown correct.
+- Updated stale assertions that encoded the old label: `_e2e_5c2_1`
+  (bahraini/ancestry expected "Eligible now" → "Citizen") and `_e2e_5c2`
+  (states 3-4 used `bahraini` to test the date path — switched to
+  `foreign_residency`, which also fixed a pre-existing failure there).
+- Regression: residents 15/0 (eligible-now vs still-counting split intact),
+  bulk-import 40/0, youth 28/0 + 24/0, Phase 9 46/0, v1.0.2 audit pass,
+  5c2.1 48/0. Pre-existing unrelated failures (5c2 eval-lock/orphan-scores;
+  phase_6_1 passport rendering) confirmed identical at HEAD via stash test.
+
+## v1.3.1 — Registry import: Age Group drives nationality (status + country + code) (2026-06-20)
+
+The registry importer now maps the **Age Group** column to FOUR fields, so
+imported players get real eligibility instead of "unknown", and the
+senior National Team label **NT** is accepted.
+
+### What landed
+- **`AGE_GROUP_MAP`** ([registry_import_helpers.py](app/admin/registry_import_helpers.py)) — Age Group →
+  `(age_group, nationality_status, nationality, nationality_code)`:
+  - `U17/U20/U23` → that group, **bahraini**, Bahrain, BHR
+  - `NT` / `senior` → senior, **bahraini**, Bahrain, BHR (NT is the senior
+    national team; DB never receives "NT" as age_group)
+  - `residency` / `resident` → senior, **foreign_residency**, nationality +
+    code **from the file** (required, validated)
+  - anything else (incl. blank) → **ERROR** row, clear message (no silent default)
+- **Optional nationality columns**, matched by **header text** (row 3):
+  `Nationality` + `Nationality Code`. Citizen files without them still
+  parse; residency files supply them. Code validated as exactly 3 letters
+  (uppercased); resident rows missing nationality/code are ERROR rows.
+- **INSERT + UPDATE** now write `nationality_status`, `nationality`,
+  `nationality_code` (plus `age_group`). UPDATE sets them **directly** (not
+  COALESCE) so re-importing **corrects earlier NULL** nationality fields.
+- **Preview** ([registry_import_preview.html](app/templates/admin/registry_import_preview.html)) adds Eligibility /
+  Nationality / Code columns (friendly labels: "Citizen (مواطن)" /
+  "Resident (إقامة)"). Upload page documents the residency columns.
+- **Residency template** generated at
+  `sample_data/BFA_Player_Registry_Template_residency.xlsx` (gitignored;
+  for Ali) with the two extra columns + an example row.
+
+### (1.5) catches surfaced before building
+- **Parser was fixed-position, not header-based.** Added header detection
+  for the two optional columns only (A–F stay positional); "Nationality
+  Code" matched before "Nationality" so the substring doesn't collide.
+- **Behaviour change flagged:** blank Age Group was silently `senior`
+  before; per the spec's no-silent-defaults rule it is now an **ERROR**
+  (all real rows carry an explicit group).
+- **UPDATE overwrites nationality** unconditionally (spec: correct prior
+  NULLs); name_ar/dob keep COALESCE so they're never wiped.
+
+### Verification
+- `migrations/_e2e_bulk_import.py` extended — **40/40** (citizen
+  U23/NT/senior → bahraini/Bahrain/BHR; residency Brazil/BRA from file;
+  missing nationality, bad 3-letter code, bogus + blank label → ERROR;
+  citizen file with no nationality columns still imports; re-import
+  corrects prior-NULL fields; preview shows resolved fields).
+- Regression: Phase 9 46/0, youth 28/0 + 24/0, residents 15/0, v1.0.2
+  audit all-pass.
+
 ## v1.3.0 — Bulk import: Player Registry Excel + CPR-matched photos (2026-06-20)
 
 Two admin-only, preview-then-confirm import pages so management can inject
