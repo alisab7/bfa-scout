@@ -10,6 +10,11 @@
   'ERROR':  '#C8102E',
 } %}
 
+{% set elig_label = {
+  'bahraini':          'Citizen (مواطن)',
+  'foreign_residency': 'Resident (إقامة)',
+} %}
+
 {% block content %}
 <div class="max-w-5xl mx-auto px-4 py-8">
 
@@ -40,6 +45,9 @@
             <th class="px-3 py-2 text-left" style="color:var(--text-muted);">CPR</th>
             <th class="px-3 py-2 text-left" style="color:var(--text-muted);">DOB</th>
             <th class="px-3 py-2 text-left" style="color:var(--text-muted);">Age group</th>
+            <th class="px-3 py-2 text-left" style="color:var(--text-muted);">Eligibility</th>
+            <th class="px-3 py-2 text-left" style="color:var(--text-muted);">Nationality</th>
+            <th class="px-3 py-2 text-left" style="color:var(--text-muted);">Code</th>
             <th class="px-3 py-2 text-left" style="color:var(--text-muted);">Status</th>
             <th class="px-3 py-2 text-left" style="color:var(--text-muted);">Note</th>
           </tr>
@@ -52,6 +60,11 @@
               <td class="px-3 py-2 font-mono" style="color:var(--text);">{{ r.cpr or '—' }}</td>
               <td class="px-3 py-2" style="color:var(--text);">{{ r.dob or '—' }}</td>
               <td class="px-3 py-2" style="color:var(--text);">{{ r.age_group or '—' }}</td>
+              <td class="px-3 py-2" style="color:var(--text);">
+                {{ elig_label.get(r.nationality_status, r.nationality_status or '—') }}
+              </td>
+              <td class="px-3 py-2" style="color:var(--text);">{{ r.nationality or '—' }}</td>
+              <td class="px-3 py-2 font-mono" style="color:var(--text);">{{ r.nationality_code or '—' }}</td>
               <td class="px-3 py-2">
                 <span class="px-2 py-0.5 rounded text-xs font-semibold"
                       style="background:{{ status_color.get(r.status, '#6B7280') }};color:#fff;">

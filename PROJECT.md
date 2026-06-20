@@ -36,10 +36,35 @@
 | **Phase 8.1: Security hardening** | **✅ Complete** | nginx login rate limit (10/min, burst 5); password complexity (≥12, upper+lower+digit); 8hr sliding session timeout + secure cookie flags. v1.0.1 |
 | **Youth NT section + restricted youth_nt role** | **✅ Complete** | `players.age_group` (U17/U20/U23/senior); `/youth` section; general list excludes youth; first restricted role `youth_nt` (sees only youth, query-level + 403s); 28/28 functional + 24/24 security E2E. v1.2.0 |
 | **Bulk import: Registry Excel + CPR-matched photos** | **✅ Complete** | `/admin/import/players` (registry `.xlsx` → preview → confirm, CPR-keyed, age-group-highest-wins, idempotent) + `/admin/import/photos` (CPR-filename match, reuses photo pipeline); `app/players/cpr.normalize_cpr` (9-digit TEXT); admin-only; 24/24 E2E. v1.3.0 |
+| **Registry import: nationality mapping** | **✅ Complete** | Age Group → age_group + nationality_status + nationality + nationality_code. Citizens (U17/U20/U23/NT/senior) auto Bahrain/BHR; residents (residency) take nationality + 3-letter code from the file (required+validated); NT accepted; INSERT+UPDATE write all four (re-import corrects NULLs); 40/40 E2E. v1.3.1 |
 | Phase 8.2: Auth hardening v2 | Queued (v1.1) | CSRF token review, password reset email, 2FA/MFA |
 | Phase 10: AI features | Queued (post-v1) | Gemini integration |
 
 ## Current phase
+
+**Registry import: nationality mapping — complete. v1.3.1.**
+
+The registry importer's **Age Group** column now drives four fields so
+imported players get real eligibility (not "unknown"):
+- `U17/U20/U23` → that group + **bahraini** + Bahrain + BHR
+- `NT` / `senior` → senior + **bahraini** + Bahrain + BHR (NT accepted; DB
+  never stores "NT" as age_group)
+- `residency` / `resident` → senior + **foreign_residency** + nationality +
+  3-letter code **from the file** (required, validated; matched by header so
+  citizen files don't need the columns)
+- blank / unmapped label → **ERROR** (no silent default)
+
+INSERT + UPDATE both write `nationality_status/nationality/nationality_code`;
+UPDATE sets them directly so a re-import corrects earlier NULLs. Preview
+shows the resolved eligibility/nationality/code. Residency template:
+`sample_data/BFA_Player_Registry_Template_residency.xlsx` (gitignored).
+40/40 E2E; prior suites regress clean.
+
+**Out of scope (Ali):** the one-time SQL `UPDATE` to fix the ~35
+already-imported players that have NULL nationality (or just re-run the
+import for them — UPDATE now corrects NULLs).
+
+---
 
 **Bulk import: Player Registry Excel + CPR-matched photos — complete. v1.3.0.**
 

@@ -61,8 +61,17 @@
       <li>B — Full Name (English) · required</li>
       <li>C — CPR · the master key, normalized to 9-digit text</li>
       <li>D — Date of Birth · DD/MM/YYYY (unreadable → left blank + warned)</li>
-      <li>E — Age Group · U17 / U20 / U23 / senior (blank → senior)</li>
+      <li>E — Age Group · U17 / U20 / U23 / NT / senior / residency · <em>required</em></li>
       <li>F — Notes · rows marked "Example only" are skipped</li>
+    </ul>
+    <p class="mt-3 text-xs" style="color:var(--text-muted);">
+      <strong>Age Group sets eligibility automatically.</strong> U17/U20/U23/NT/senior
+      → Bahraini citizen (Bahrain / BHR). For <strong>residency</strong> rows the file
+      must also include two columns (matched by header, so citizen files don't need them):
+    </p>
+    <ul class="mt-1 text-xs" style="color:var(--text-muted);">
+      <li><strong>Nationality</strong> — country name, e.g. <code>Brazil</code></li>
+      <li><strong>Nationality Code</strong> — 3-letter code, e.g. <code>BRA</code></li>
     </ul>
   </details>
 

@@ -108,12 +108,15 @@ def registry_import_commit():
                             """
                             INSERT INTO players
                                 (full_name, full_name_ar, national_id, dob,
-                                 age_group, is_active, created_by)
-                            VALUES (%s, %s, %s, %s, %s, TRUE, %s)
+                                 age_group, nationality_status, nationality,
+                                 nationality_code, is_active, created_by)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, TRUE, %s)
                             RETURNING id
                             """,
                             (p['full_name'], p['full_name_ar'], p['cpr'],
-                             p['dob'], p['age_group'], current_user.id)
+                             p['dob'], p['age_group'], p['nationality_status'],
+                             p['nationality'], p['nationality_code'],
+                             current_user.id)
                         )
                         new_id = cur.fetchone()['id']
                     created_ids.append(new_id)
@@ -122,19 +125,25 @@ def registry_import_commit():
                 else:
                     with conn.cursor() as cur:
                         # COALESCE so blank name_ar/dob don't wipe existing
-                        # data; age_group always set (highest-wins resolved).
+                        # data; age_group + nationality_* always set
+                        # (highest-wins resolved) so a re-import corrects
+                        # earlier NULL nationality fields.
                         cur.execute(
                             """
                             UPDATE players
-                            SET    full_name    = %s,
-                                   full_name_ar = COALESCE(%s, full_name_ar),
-                                   dob          = COALESCE(%s, dob),
-                                   age_group    = %s,
-                                   updated_at   = NOW()
+                            SET    full_name          = %s,
+                                   full_name_ar       = COALESCE(%s, full_name_ar),
+                                   dob                = COALESCE(%s, dob),
+                                   age_group          = %s,
+                                   nationality_status = %s,
+                                   nationality        = %s,
+                                   nationality_code   = %s,
+                                   updated_at         = NOW()
                             WHERE  id = %s
                             """,
                             (p['full_name'], p['full_name_ar'], p['dob'],
-                             p['age_group'], p['db_id'])
+                             p['age_group'], p['nationality_status'],
+                             p['nationality'], p['nationality_code'], p['db_id'])
                         )
                     updated_ids.append(p['db_id'])
                     _audit(conn, current_user.id, player_id=p['db_id'],

@@ -156,6 +156,36 @@ def build_registry_xlsx():
                '15/3/2005', 'U23', None, 9])
     ws.append(['غارب', f'{NAME_PREFIX}-BadCpr', ' 26/12',        # malformed CPR -> ERROR
                '01/01/2005', 'U17', None, 10])
+    ws.append(['وطني', f'{NAME_PREFIX}-NT', 700000050,           # NT -> senior + bahraini
+               '10/2/1998', 'NT', None, 11])
+    ws.append(['شعار', f'{NAME_PREFIX}-Bogus', 700000060,        # bogus label -> ERROR
+               '10/2/1999', 'coach', None, 12])
+    ws.append(['تصحيح', f'{NAME_PREFIX}-NullFix', 700000099,     # existing CPR w/ NULL nat -> corrected
+               '01/01/2001', 'U23', None, 13])
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def build_residency_xlsx():
+    """Residency file — same template + Nationality / Nationality Code columns."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = '➡ Player Registry'
+    ws['A1'] = 'BFA Player Registry (Residency)'
+    ws['A2'] = 'Fill from row 4'
+    ws.append(['Full Name Arabic', 'Full Name (English)', 'CPR Number',
+               'Date of Birth', 'Age Group', 'Notes', '#',
+               'Nationality', 'Nationality Code'])              # row 3 headers
+    # good resident: Brazil / BRA
+    ws.append(['ريزيندي', f'{NAME_PREFIX}-ResGood', 700000201,
+               '12/9/1995', 'residency', None, 4, 'Brazil', 'bra'])  # lowercase -> uppercased
+    # missing nationality + code -> ERROR
+    ws.append(['ناقص', f'{NAME_PREFIX}-ResMissing', 700000202,
+               '12/9/1996', 'resident', None, 5, None, None])
+    # bad code (not 3 letters) -> ERROR
+    ws.append(['خطأ', f'{NAME_PREFIX}-ResBadCode', 700000203,
+               '12/9/1997', 'residency', None, 6, 'Brazil', 'BRAZIL'])
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
@@ -221,6 +251,14 @@ with db() as conn, conn.cursor() as cur:
                    VALUES (%s,%s,'senior',TRUE,(SELECT id FROM users WHERE role='admin' ORDER BY id LIMIT 1))
                    RETURNING id""", (PHOTO_PLAYER_ZS, PHOTO_CPR_ZS_STORED))
     PHOTO_PLAYER_IDS.append(cur.fetchone()['id'])
+    # NullFix player: pre-existing CPR with NULL nationality fields. The
+    # citizen import (same CPR, U23) must UPDATE it and CORRECT the NULLs.
+    cur.execute("""INSERT INTO players
+                     (full_name,national_id,age_group,nationality_status,
+                      nationality,nationality_code,is_active,created_by)
+                   VALUES (%s,%s,'senior',NULL,NULL,NULL,TRUE,
+                           (SELECT id FROM users WHERE role='admin' ORDER BY id LIMIT 1))""",
+                (f'{NAME_PREFIX}-NullFix', '700000099'))
     conn.commit()
 print(f"  scout={INSERTED_USER_IDS}, photo_players={PHOTO_PLAYER_IDS}")
 
@@ -246,15 +284,23 @@ try:
     chk("P1b example row SKIP present", "example row" in prev)
     chk("P1c bad CPR ERROR present", "bad CPR" in prev)
     chk("P1d Beta CPR normalized to 000503061 in preview", "000503061" in prev)
+    chk("P1e bogus age-group label -> ERROR in preview", "invalid/blank age group" in prev)
+    chk("P1f preview shows resolved Citizen eligibility", "Citizen" in prev)
+    chk("P1g preview shows resolved nationality Bahrain/BHR", "Bahrain" in prev and "BHR" in prev)
 
     # ── Commit ────────────────────────────────────────────────────
     tok = get_csrf(admin, "/admin/import/players/preview")
     http(admin, "POST", "/admin/import/players/commit", data={"csrf_token": tok})
 
     with db() as conn, conn.cursor() as cur:
-        cur.execute("SELECT full_name, national_id, age_group, dob FROM players "
+        cur.execute("SELECT full_name, national_id, age_group, dob, "
+                    "nationality_status, nationality, nationality_code FROM players "
                     "WHERE full_name LIKE %s ORDER BY full_name", (f'{NAME_PREFIX}-%',))
         imported = {r['full_name']: r for r in cur.fetchall()}
+
+    def natfields(name):
+        r = imported.get(name, {})
+        return (r.get('nationality_status'), r.get('nationality'), r.get('nationality_code'))
 
     chk("P2 Alpha created, CPR 9-digit TEXT 041209370",
         imported.get(f'{NAME_PREFIX}-Alpha', {}).get('national_id') == '041209370',
@@ -273,6 +319,59 @@ try:
     chk("P3b Gamma messy-DOB ' 18/8/2003' parsed",
         str(imported.get(f'{NAME_PREFIX}-Gamma', {}).get('dob')) == '2003-08-18',
         f"got {imported.get(f'{NAME_PREFIX}-Gamma', {}).get('dob')}")
+
+    # ── N: nationality mapping (citizens auto Bahrain/BHR) ────────
+    chk("N1 U23 Delta -> bahraini + Bahrain + BHR",
+        natfields(f'{NAME_PREFIX}-Delta') == ('bahraini', 'Bahrain', 'BHR'),
+        f"got {natfields(f'{NAME_PREFIX}-Delta')}")
+    chk("N2 NT row -> senior + bahraini + Bahrain + BHR (no longer errors)",
+        imported.get(f'{NAME_PREFIX}-NT', {}).get('age_group') == 'senior'
+        and natfields(f'{NAME_PREFIX}-NT') == ('bahraini', 'Bahrain', 'BHR'),
+        f"age={imported.get(f'{NAME_PREFIX}-NT', {}).get('age_group')} nat={natfields(f'{NAME_PREFIX}-NT')}")
+    chk("N3 senior Gamma -> bahraini + Bahrain + BHR",
+        natfields(f'{NAME_PREFIX}-Gamma') == ('bahraini', 'Bahrain', 'BHR'),
+        f"got {natfields(f'{NAME_PREFIX}-Gamma')}")
+    chk("N4 bogus age-group label NOT imported (ERROR)",
+        f'{NAME_PREFIX}-Bogus' not in imported)
+    chk("N5 citizen file had NO nationality columns yet still resolved",
+        natfields(f'{NAME_PREFIX}-Alpha') == ('bahraini', 'Bahrain', 'BHR'),
+        f"got {natfields(f'{NAME_PREFIX}-Alpha')}")
+    chk("N6 re-import corrects prior-NULL player's nationality fields",
+        natfields(f'{NAME_PREFIX}-NullFix') == ('bahraini', 'Bahrain', 'BHR')
+        and imported.get(f'{NAME_PREFIX}-NullFix', {}).get('age_group') == 'U23',
+        f"got {natfields(f'{NAME_PREFIX}-NullFix')} age={imported.get(f'{NAME_PREFIX}-NullFix', {}).get('age_group')}")
+
+    # ── R: residency file (nationality + code from file) ──────────
+    print("\n=== Residency import ===")
+    resid = build_residency_xlsx()
+    tok = get_csrf(admin, "/admin/import/players")
+    http(admin, "POST", "/admin/import/players/upload",
+         parts=[("csrf_token", tok),
+                ("file", ("residency.xlsx", resid,
+                          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))])
+    s, rprev, _ = http(admin, "GET", "/admin/import/players/preview")
+    chk("R1 residency preview loads", s == 200, f"got {s}")
+    chk("R2 missing nationality row -> ERROR message",
+        "Resident row requires Nationality" in rprev)
+    chk("R3 bad code row -> 3-letters ERROR message",
+        "exactly 3 letters" in rprev)
+    chk("R4 resident preview shows Resident eligibility", "Resident" in rprev)
+    tok = get_csrf(admin, "/admin/import/players/preview")
+    http(admin, "POST", "/admin/import/players/commit", data={"csrf_token": tok})
+    with db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT full_name, age_group, nationality_status, nationality, "
+                    "nationality_code FROM players WHERE full_name LIKE %s",
+                    (f'{NAME_PREFIX}-Res%',))
+        res = {r['full_name']: r for r in cur.fetchall()}
+    rg = res.get(f'{NAME_PREFIX}-ResGood', {})
+    chk("R5 good resident -> senior + foreign_residency + Brazil + BRA",
+        (rg.get('age_group'), rg.get('nationality_status'), rg.get('nationality'),
+         rg.get('nationality_code')) == ('senior', 'foreign_residency', 'Brazil', 'BRA'),
+        f"got {(rg.get('age_group'), rg.get('nationality_status'), rg.get('nationality'), rg.get('nationality_code'))}")
+    chk("R6 missing-nationality resident NOT imported",
+        f'{NAME_PREFIX}-ResMissing' not in res)
+    chk("R7 bad-code resident NOT imported",
+        f'{NAME_PREFIX}-ResBadCode' not in res)
 
     # ── P7: youth routing ─────────────────────────────────────────
     _, u17_html, _ = http(admin, "GET", "/youth/u17")
