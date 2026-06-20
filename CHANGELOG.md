@@ -1,5 +1,45 @@
 # Changelog
 
+## v1.4.1 — Admin bulk position-assign screen (2026-06-20)
+
+Bulk-imported players (registry Excel) arrive with no primary position —
+the registry file has no position column — so the evaluate route correctly
+redirects them to edit (criteria are position-group specific). Setting
+positions one-by-one is slow; this adds a single screen to assign them in
+bulk. The evaluate guard is unchanged.
+
+### What landed
+- **`/admin/assign-positions`** ([app/admin/assign_positions.py](app/admin/assign_positions.py),
+  admin + TD) — lists active players with `primary_position_id IS NULL`
+  (name EN+AR, squad, a grouped position dropdown per row), reusing the
+  players' `_load_position_picker()` (identical options to the edit/eval
+  forms). Save sets each chosen player's `primary_position_id`; blank rows
+  stay unassigned; a stale-form guard only updates rows still NULL. Explicit
+  `conn.commit()`. Audit-logged (`player.position_assigned`).
+- **No group write needed** — `players` has no `position_group_id` column;
+  the group is derived via JOIN (`positions.position_group_id`), so setting
+  `primary_position_id` alone makes the evaluate guard pass — exactly how
+  the edit form already works.
+- Admin/TD-gated "Assign positions" link on the players list, next to the
+  import buttons.
+
+### (1.5) findings
+- Edit sets position via plain `UPDATE primary_position_id`; group is never
+  stored, always derived — confirmed. So bulk-assign mirrors that exactly.
+- No schema change. Live dev DB had 0 position-less players (the ~35 are on
+  prod); E2E creates fixtures.
+
+### Verification
+- New `migrations/_e2e_assign_positions.py` — **12/12**: position-less
+  players listed; already-positioned excluded; assign sets
+  `primary_position_id` (DB) and drops the player off the list; **evaluate
+  redirects to /edit BEFORE and returns 200 on /evaluate AFTER**; blank rows
+  stay unassigned; non-admin 403, TD 200; commit persists across a fresh
+  connection.
+- Regression: eval-position 13/0, /nt 11/0, residents 15/0, youth 28/0 +
+  24/0, eligibility-badge 13/0, bulk-import 40/0, Phase 9 46/0, 5c2.1 48/0,
+  5d 26/0, phase_7 29/0, v1.0.2 audit pass.
+
 ## v1.4.0 — Evaluations: record the position played in the match (2026-06-20)
 
 Each evaluation now records the position the player actually played in

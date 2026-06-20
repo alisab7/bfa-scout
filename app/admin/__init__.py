@@ -8,6 +8,7 @@ from . import users  # noqa: E402,F401 — registers routes on bp
 from . import bulk_import  # noqa: E402,F401 — Phase 9: registers /admin/players/bulk-import/* routes
 from . import registry_import  # noqa: E402,F401 — registers /admin/import/players/* routes
 from . import photo_import  # noqa: E402,F401 — registers /admin/import/photos/* routes
+from . import assign_positions  # noqa: E402,F401 — registers /admin/assign-positions routes
 
 
 @bp.route('/deleted-evaluations')

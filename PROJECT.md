@@ -40,10 +40,29 @@
 | **Eligibility badge "Citizen"** | **✅ Complete** | bahraini/foreign_ancestry → "Citizen" (not "Eligible now", reserved for residency past-date). Single source `compute_eligibility_status`. v1.3.2 |
 | **/nt senior-only + name search** | **✅ Complete** | /nt restricted to age_group=senior (NULL-safe); client-side Alpine live EN/Arabic name search. v1.3.3 |
 | **Evaluations: position played in match** | **✅ Complete** | Required per-evaluation match-position dropdown (positions table, defaults to primary); persisted on `evaluations.position_played_id`; shown on view + history. Display-only — criteria + registered position unchanged. 13/13 E2E. v1.4.0 |
+| **Admin bulk position-assign screen** | **✅ Complete** | `/admin/assign-positions` (admin+TD) lists active position-less players + grouped picker; bulk-sets `primary_position_id` so imported players become evaluatable. Evaluate guard unchanged. 12/12 E2E. v1.4.1 |
 | Phase 8.2: Auth hardening v2 | Queued (v1.1) | CSRF token review, password reset email, 2FA/MFA |
 | Phase 10: AI features | Queued (post-v1) | Gemini integration |
 
 ## Current phase
+
+**Admin bulk position-assign screen — complete. v1.4.1.**
+
+`/admin/assign-positions` (admin + TD) lists every active player with no
+primary position (the ~35 registry imports) with the grouped position
+picker, and sets `primary_position_id` for the chosen rows in one save
+(blank rows stay unassigned). Because `players` has no `position_group_id`
+column — the group is derived via JOIN — setting the primary position is
+enough for the evaluate guard to pass. The evaluate guard itself is
+unchanged; no inline-on-evaluate picker. `migrations/_e2e_assign_positions.py`
+12/12; full regression green. No schema change.
+
+**Deploy note (Ali):** pure-code deploy. After deploy, open
+`/admin/assign-positions`, set positions for the imported players (you'll
+need their positions from team sheets / coaching staff), and Save — their
+evaluate pages then work.
+
+---
 
 **Evaluations: position played in the match — complete. v1.4.0.**
 
