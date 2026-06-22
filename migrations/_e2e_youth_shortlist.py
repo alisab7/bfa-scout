@@ -160,10 +160,18 @@ try:
     chk("2 TD GET /youth/shortlist → 200", s == 200, f"got {s}")
 
     # 4 — profile button state (admin), not yet shortlisted
-    print("\n=== add + profile state ===")
+    print("\n=== add + profile state (button → modal UX) ===")
     _, prof, _ = http(admin, "GET", f"/players/{ids['youth']}")
-    chk("4a profile shows '+ Add to shortlist' before adding",
-        "Add to shortlist" in prof and "On youth shortlist" not in prof)
+    chk("4a profile shows 'Add to shortlist' button before adding",
+        "Add to shortlist" in prof and "On shortlist" not in prof)
+    # Modal markup present (hidden by default) + posts to the add route + note field
+    chk("4c modal is Alpine-driven (x-data slOpen + x-show)",
+        "slOpen" in prof and 'x-show="slOpen"' in prof)
+    chk("4d modal hidden by default (x-cloak)", "x-cloak" in prof)
+    chk("4e modal form posts to shortlist_add with a note field",
+        f'/players/{ids["youth"]}/shortlist"' in prof and 'name="note"' in prof)
+    chk("4f modal closes on backdrop click + escape",
+        "@click.self=\"slOpen = false\"" in prof and "keydown.escape.window" in prof)
 
     # 1 — admin adds youth player with note
     tok = csrf_from(admin, f"/players/{ids['youth']}")
@@ -171,7 +179,8 @@ try:
          data={"csrf_token": tok, "note": "Strong left foot, track for U23"})
     chk("1 youth player appears on /youth/shortlist after add", on_shortlist(YOUTH))
     _, prof2, _ = http(admin, "GET", f"/players/{ids['youth']}")
-    chk("4b profile shows 'On youth shortlist' after adding", "On youth shortlist" in prof2)
+    chk("4b profile shows 'On shortlist' + Edit/Remove after adding",
+        "On shortlist" in prof2 and "Edit note" in prof2 and "Remove" in prof2)
 
     # 7 — shortlist page shows age_group + note + added_by
     _, sl_html, _ = http(admin, "GET", "/youth/shortlist")
@@ -179,11 +188,15 @@ try:
     chk("7b shortlist shows age_group U20", "U20" in sl_html)
     chk("7c shortlist shows added-by name", "Initial Administrator" in sl_html or "by " in sl_html)
 
-    # 2 — nt_staff can add (the U17 player)
+    # 2 — nt_staff can add (the U17 player) with an EMPTY note (optional)
     tok = csrf_from(nt, f"/players/{ids['youth2']}")
     s, _, _ = http(nt, "POST", f"/players/{ids['youth2']}/shortlist",
-                   data={"csrf_token": tok, "note": "U17 prospect"})
+                   data={"csrf_token": tok, "note": ""})
     chk("2 nt_staff can add a youth player", on_shortlist(YOUTH2))
+    with db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT note FROM youth_shortlist WHERE player_id=%s", (ids['youth2'],))
+        chk("2b empty note adds fine (note NULL/blank)",
+            (cur.fetchone() or {}).get('note') in (None, ''))
 
     # 6 — re-add updates note, no duplicate (UNIQUE)
     tok = csrf_from(admin, f"/players/{ids['youth']}")

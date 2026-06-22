@@ -1,5 +1,37 @@
 # Changelog
 
+## v1.5.1 — Youth shortlist UX: button → modal (2026-06-20)
+
+Front-end/template change only — **no backend, schema, route, or access
+change**. The profile's permanent inline note box (clunky, cluttered every
+youth profile) is replaced with a clean button-opens-modal pattern.
+
+### What landed
+- **[profile.html](app/templates/players/profile.html)** — admin/TD/nt_staff, youth players only
+  (unchanged access):
+  - **Not shortlisted:** a single "★ Add to shortlist" button → opens an
+    Alpine modal with an **optional** note textarea + Save / Cancel.
+  - **On shortlist:** "★ On shortlist" + the note shown read-only, an "Edit
+    note" button (same modal, pre-filled) and a "Remove" button (with a
+    confirm).
+  - The modal reuses the app's existing `_delete_modal` Alpine pattern
+    (`x-show`/`x-cloak`, `fixed inset-0 bg-black/70` backdrop) and closes on
+    Cancel, **Escape** (`@keydown.escape.window`), and **backdrop click**
+    (`@click.self`). Both forms still POST to the unchanged
+    `/players/<id>/shortlist` and `/shortlist/remove` with the CSRF token.
+- Note stays optional (empty submits fine; backend already stores NULL).
+
+### Verification
+- `migrations/_e2e_youth_shortlist.py` extended — **24/24**: button shown
+  before adding; modal markup present + Alpine-driven + hidden by default;
+  form posts to the add route with a `note` field; backdrop/escape close
+  attrs present; on-shortlist state shows Edit note + Remove; **empty-note
+  add works**; access unchanged (scout/viewer/youth_nt 403); idempotent
+  re-add, promotion-keep, remove all still pass.
+- Regression: youth functional 28/0 + security 24/0, /nt 11/0, residents
+  15/0, eval-position 13/0, assign-positions 12/0, bulk-import 40/0, Phase 9
+  46/0, 5c2.1 48/0, v1.0.2 audit pass.
+
 ## v1.5.0 — Youth shortlist (tracked prospects) (2026-06-20)
 
 A flat watchlist of youth prospects being tracked toward senior/NT call-up,

@@ -99,42 +99,80 @@
       </div>
     {% endif %}
 
-    {# ── Youth shortlist toggle — admin / TD / nt_staff only ───────── #}
-    {% if current_user.has_role('admin', 'technical_director', 'nt_staff') %}
-      <div class="shrink-0 w-full sm:w-64 rounded-lg p-3"
-           style="background:var(--surface);border:1px solid var(--border);">
+    {# ── Youth shortlist — admin / TD / nt_staff only. Button opens an
+         Alpine modal (matches the app's _delete_modal pattern) with an
+         OPTIONAL note. Backend routes/access unchanged — UI only. ──── #}
+    {% if current_user.has_role('admin', 'technical_director', 'nt_staff')
+          and (shortlist_entry or player.age_group in ('U17', 'U20', 'U23')) %}
+      <div class="shrink-0 w-full sm:w-64" x-data="{ slOpen: false }">
         {% if shortlist_entry %}
-          <p class="text-sm font-semibold mb-2" style="color:#22C55E;">
-            ★ On youth shortlist
-            <a href="{{ url_for('youth.shortlist') }}" class="text-xs font-normal ml-1"
-               style="color:var(--text-muted);">(view all)</a>
-          </p>
-          <form method="POST" action="{{ url_for('players.shortlist_add', player_id=player.id) }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <textarea name="note" rows="2" placeholder="Why tracked…"
-                      class="w-full px-2 py-1 rounded text-xs mb-2"
-                      style="background:var(--bg);border:1px solid var(--border);color:var(--text);">{{ shortlist_entry.note or '' }}</textarea>
-            <button type="submit" class="w-full px-3 py-1.5 rounded text-xs font-semibold"
-                    style="background:var(--accent);color:#fff;">Update note</button>
-          </form>
-          <form method="POST" action="{{ url_for('players.shortlist_remove', player_id=player.id) }}" class="mt-2">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="w-full px-3 py-1.5 rounded text-xs font-semibold"
-                    style="background:var(--surface);border:1px solid var(--brand);color:var(--brand);">
-              Remove from shortlist
-            </button>
-          </form>
-        {% elif player.age_group in ('U17', 'U20', 'U23') %}
-          <p class="text-sm font-semibold mb-2" style="color:var(--text);">Youth shortlist</p>
-          <form method="POST" action="{{ url_for('players.shortlist_add', player_id=player.id) }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <textarea name="note" rows="2" placeholder="Why tracked (optional)…"
-                      class="w-full px-2 py-1 rounded text-xs mb-2"
-                      style="background:var(--bg);border:1px solid var(--border);color:var(--text);"></textarea>
-            <button type="submit" class="w-full px-3 py-1.5 rounded text-xs font-semibold text-white"
-                    style="background:var(--brand);">+ Add to shortlist</button>
-          </form>
+          {# ── On-shortlist state ── #}
+          <div class="rounded-lg p-3"
+               style="background:var(--surface);border:1px solid var(--border);">
+            <p class="text-sm font-semibold mb-1" style="color:#22C55E;">
+              ★ On shortlist
+              <a href="{{ url_for('youth.shortlist') }}" class="text-xs font-normal ml-1"
+                 style="color:var(--text-muted);">(view all)</a>
+            </p>
+            {% if shortlist_entry.note %}
+              <p class="text-xs mb-2" style="color:var(--text-muted);">{{ shortlist_entry.note }}</p>
+            {% else %}
+              <p class="text-xs mb-2 italic" style="color:var(--text-muted);">No note.</p>
+            {% endif %}
+            <div class="flex gap-2">
+              <button type="button" @click="slOpen = true"
+                      class="flex-1 px-3 py-1.5 rounded text-xs font-semibold"
+                      style="background:var(--accent);color:#fff;">Edit note</button>
+              <form method="POST"
+                    action="{{ url_for('players.shortlist_remove', player_id=player.id) }}"
+                    onsubmit="return confirm('Remove {{ player.full_name }} from the shortlist?');"
+                    class="flex-1">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="w-full px-3 py-1.5 rounded text-xs font-semibold"
+                        style="background:var(--surface);border:1px solid var(--brand);color:var(--brand);">
+                  Remove
+                </button>
+              </form>
+            </div>
+          </div>
+        {% else %}
+          {# ── Not-shortlisted state (youth player) ── #}
+          <button type="button" @click="slOpen = true"
+                  class="w-full px-4 py-2 rounded text-sm font-semibold text-white text-center"
+                  style="background:var(--brand);">★ Add to shortlist</button>
         {% endif %}
+
+        {# ── Shared modal (add OR edit-note) ── #}
+        <div x-show="slOpen" x-cloak style="display:none;"
+             @keydown.escape.window="slOpen = false"
+             class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+             @click.self="slOpen = false">
+          <div class="rounded-xl p-6 max-w-md w-full"
+               style="background:var(--surface);border:1px solid var(--border);">
+            <h3 class="font-bold text-lg mb-3" style="color:var(--text);">
+              {% if shortlist_entry %}Edit shortlist note{% else %}Add to youth shortlist{% endif %}
+            </h3>
+            <p class="text-sm mb-4" style="color:var(--text-muted);">
+              {{ player.full_name }} — tracked youth prospect. The note is optional.
+            </p>
+            <form method="POST" action="{{ url_for('players.shortlist_add', player_id=player.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <label class="block text-xs uppercase tracking-wide mb-1" style="color:var(--text-muted);">
+                Note (optional)
+              </label>
+              <textarea name="note" rows="3" placeholder="Why are they being tracked?"
+                        class="w-full px-3 py-2 rounded text-sm"
+                        style="background:var(--bg);border:1px solid var(--border);color:var(--text);">{{ shortlist_entry.note if shortlist_entry else '' }}</textarea>
+              <div class="flex items-center justify-end gap-3 mt-4">
+                <button type="button" @click="slOpen = false"
+                        class="text-sm" style="color:var(--text-muted);">Cancel</button>
+                <button type="submit"
+                        class="px-4 py-2 rounded text-sm font-semibold text-white"
+                        style="background:var(--brand);">Save</button>
+              </div>
+            </form>
+          </div>
+        </div>
       </div>
     {% endif %}
   </div>
