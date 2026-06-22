@@ -9,11 +9,13 @@ youth profile) is replaced with a clean button-opens-modal pattern.
 ### What landed
 - **[profile.html](app/templates/players/profile.html)** — admin/TD/nt_staff, youth players only
   (unchanged access):
-  - **Not shortlisted:** a single "★ Add to shortlist" button → opens an
-    Alpine modal with an **optional** note textarea + Save / Cancel.
-  - **On shortlist:** "★ On shortlist" + the note shown read-only, an "Edit
-    note" button (same modal, pre-filled) and a "Remove" button (with a
-    confirm).
+  - The control is **folded into the existing action-button stack** (New
+    Evaluation / Edit / Deactivate) as a subtle, equal-width button — not a
+    second full-width red bar competing with the primary action.
+  - **Not shortlisted:** a subtle accent-outline "★ Add to shortlist" button
+    → opens an Alpine modal with an **optional** note textarea + Save / Cancel.
+  - **On shortlist:** a green "★ On shortlist" pill (opens the edit modal) with
+    small "Edit note" / "Remove" text-links beneath (Remove confirms).
   - The modal reuses the app's existing `_delete_modal` Alpine pattern
     (`x-show`/`x-cloak`, `fixed inset-0 bg-black/70` backdrop) and closes on
     Cancel, **Escape** (`@keydown.escape.window`), and **backdrop click**
