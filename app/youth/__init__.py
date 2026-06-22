@@ -24,11 +24,14 @@ from flask import (
 )
 from flask_login import login_required, current_user
 
-from app.auth.decorators import youth_section_access, YOUTH_GROUPS
+from app.auth.decorators import (
+    youth_section_access, admin_or_nt_staff_required, YOUTH_GROUPS,
+)
 from app.auth.audit import log_audit
 from app.db import get_db
 from app.youth.helpers import (
-    get_youth_counts, get_youth_squad, SLUG_TO_GROUP, GROUP_TO_SLUG,
+    get_youth_counts, get_youth_squad, get_shortlist,
+    SLUG_TO_GROUP, GROUP_TO_SLUG,
 )
 
 bp = Blueprint('youth', __name__, url_prefix='/youth')
@@ -52,6 +55,19 @@ def index():
         for g in YOUTH_GROUPS
     ]
     return render_template('youth/index.html', cards=cards, counts=counts)
+
+
+@bp.route('/shortlist')
+@login_required
+@admin_or_nt_staff_required
+def shortlist():
+    """Shortlist tab — all tracked youth prospects (admin/TD/nt_staff only).
+
+    A static rule, so Werkzeug ranks it above `/<slug>` — no collision with
+    the squad sub-views. Scout and youth_nt are excluded (admin/TD/nt_staff
+    are the coaching/NT side, per the shortlist access boundary)."""
+    players = get_shortlist()
+    return render_template('youth/shortlist.html', players=players)
 
 
 @bp.route('/<slug>')

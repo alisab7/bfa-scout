@@ -474,6 +474,24 @@ CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at);
 
 
 -- =============================================================
+-- Youth shortlist — tracked youth prospects (flat watchlist)
+-- =============================================================
+-- One row per shortlisted player (UNIQUE player_id → "add" is idempotent;
+-- the route does ON CONFLICT … DO UPDATE to refresh the note). Players are
+-- added only while youth (U17/U20/U23) but KEPT after promotion to senior
+-- (manual remove only) — a tracked prospect who made it.
+CREATE TABLE IF NOT EXISTS youth_shortlist (
+    id          SERIAL PRIMARY KEY,
+    player_id   INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    note        TEXT,
+    added_by    INTEGER REFERENCES users(id),
+    added_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (player_id)
+);
+CREATE INDEX IF NOT EXISTS idx_youth_shortlist_player ON youth_shortlist(player_id);
+
+
+-- =============================================================
 -- SEED DATA
 -- =============================================================
 

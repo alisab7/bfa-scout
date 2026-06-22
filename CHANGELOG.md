@@ -1,5 +1,52 @@
 # Changelog
 
+## v1.5.0 — Youth shortlist (tracked prospects) (2026-06-20)
+
+A flat watchlist of youth prospects being tracked toward senior/NT call-up,
+gathered into one page so coaches don't hunt across U17/U20/U23. Add/remove
+from the player profile; view in a new Youth-area "Shortlist" tab. Coaching
+side only — admin / TD / nt_staff.
+
+### What landed
+- **Schema** — `youth_shortlist` table (`migrations/youth_shortlist.sql`
+  + `_apply_…py`, idempotent `CREATE TABLE/INDEX IF NOT EXISTS`, inline
+  `UNIQUE(player_id)` — no invalid `ADD CONSTRAINT IF NOT EXISTS`). Mirrored
+  into `schema.sql`. One row per player; `ON DELETE CASCADE`.
+- **Add/remove from profile** ([profile.html](app/templates/players/profile.html)) — a toggle in the
+  action column, gated to admin/TD/nt_staff: "+ Add to shortlist" (with a
+  note) for youth players, or "★ On youth shortlist" with editable note +
+  Remove. Routes `POST /players/<id>/shortlist` and
+  `/players/<id>/shortlist/remove` ([players/__init__.py](app/players/__init__.py)),
+  `admin_or_nt_staff_required`, explicit `conn.commit()`. Add is idempotent
+  via `INSERT … ON CONFLICT (player_id) DO UPDATE` (re-add refreshes the note,
+  never duplicates).
+- **Shortlist tab** — `GET /youth/shortlist` ([youth/__init__.py](app/youth/__init__.py),
+  admin/TD/nt_staff) + `youth/shortlist.html`, mirroring the U17/U20/U23 tab
+  strip (residents pattern). Lists each tracked player with photo, age_group,
+  position, note, and added-by/when. Tab link added to the squad strip + the
+  youth landing (gated). Helpers in `youth/helpers.py`.
+- **Access boundary** — scout, viewer, and youth_nt all get 403 on the
+  shortlist routes/page (admin/TD/nt_staff only). youth_nt's existing
+  restrictions are unaffected.
+
+### (1.5) decisions (flagged)
+- **Add only youth players** (U17/U20/U23); but a shortlisted player **kept**
+  after promotion to senior (manual remove only) — the list shows their
+  current age_group, and note-update/remove keep working. Per your "keep
+  them" recommendation.
+- `/youth/shortlist` is a static route → Werkzeug ranks it above
+  `/youth/<slug>`, no collision with the squad sub-views.
+
+### Verification
+- New `migrations/_e2e_youth_shortlist.py` — **19/19**: admin/TD/nt_staff
+  add + view; scout/viewer/youth_nt 403; profile button state; note shown;
+  re-add updates note with no duplicate (UNIQUE); only-youth-add enforced;
+  promoted player stays listed + note still editable; remove drops off;
+  commit persists across a fresh connection.
+- Regression: youth functional 28/0 + **security 24/0**, /nt 11/0, residents
+  15/0, eval-position 13/0, assign-positions 12/0, bulk-import 40/0, Phase 9
+  46/0, phase_7 29/0, v1.0.2 audit pass.
+
 ## v1.4.1 — Admin bulk position-assign screen (2026-06-20)
 
 Bulk-imported players (registry Excel) arrive with no primary position —

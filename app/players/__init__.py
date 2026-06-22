@@ -10,6 +10,7 @@ from flask_login import login_required, current_user
 from app.auth.decorators import (
     scout_or_above, any_authenticated, youth_section_access,
     deny_youth_nt, require_youth_access, YOUTH_GROUPS,
+    admin_or_nt_staff_required,
 )
 from app.auth.audit import log_audit
 from app.db import get_db
@@ -441,8 +442,13 @@ def player_profile(player_id):
     bio_counts = get_player_bio_counts(player_id,
                                        requesting_user_role=current_user.role)
 
+    # Youth shortlist state (drives the profile toggle for admin/TD/nt_staff).
+    from app.youth.helpers import get_shortlist_entry
+    shortlist_entry = get_shortlist_entry(player_id)
+
     return render_template('players/profile.html', player=player, age=_age,
-                           bio_counts=bio_counts)
+                           bio_counts=bio_counts,
+                           shortlist_entry=shortlist_entry)
 
 
 @bp.route('/<int:player_id>/edit', methods=['GET', 'POST'])
@@ -953,3 +959,59 @@ def deactivate(player_id):
               {'full_name': player['full_name']})
     flash(f'Player "{player["full_name"]}" has been deactivated.', 'success')
     return redirect(url_for('players.list_players'))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Youth shortlist add / remove (admin / TD / nt_staff)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@bp.route('/<int:player_id>/shortlist', methods=['POST'])
+@admin_or_nt_staff_required
+def shortlist_add(player_id):
+    """Add a youth player to the shortlist, or update the note if already on it.
+
+    Add is allowed only while the player is youth (U17/U20/U23). A player
+    KEPT on the list after promotion to senior can still have their note
+    updated (the entry already exists) — only a brand-new add requires youth.
+    """
+    from app.youth.helpers import (
+        get_shortlist_entry, add_or_update_shortlist,
+    )
+    conn = get_db()
+    with conn.cursor() as cur:
+        cur.execute('SELECT id, full_name, age_group FROM players '
+                    'WHERE id = %s AND is_active = TRUE', (player_id,))
+        player = cur.fetchone()
+    if not player:
+        abort(404)
+
+    note = (request.form.get('note') or '').strip() or None
+    existing = get_shortlist_entry(player_id)
+
+    # New add must be a youth player; note-update on an existing entry is fine
+    # regardless (the player may have been promoted since).
+    if existing is None and player['age_group'] not in YOUTH_GROUPS:
+        flash('Only youth players (U17/U20/U23) can be added to the shortlist.', 'error')
+        return redirect(url_for('players.player_profile', player_id=player_id))
+
+    add_or_update_shortlist(player_id, note, current_user.id)
+    log_audit(current_user.id,
+              'player.shortlist_update' if existing else 'player.shortlist_add',
+              'player', player_id, {'note': note})
+    flash('Shortlist note updated.' if existing
+          else f'"{player["full_name"]}" added to the youth shortlist.', 'success')
+    return redirect(url_for('players.player_profile', player_id=player_id))
+
+
+@bp.route('/<int:player_id>/shortlist/remove', methods=['POST'])
+@admin_or_nt_staff_required
+def shortlist_remove(player_id):
+    """Remove a player from the youth shortlist."""
+    from app.youth.helpers import remove_from_shortlist
+    removed = remove_from_shortlist(player_id)
+    if removed:
+        log_audit(current_user.id, 'player.shortlist_remove', 'player', player_id, {})
+        flash('Removed from the youth shortlist.', 'success')
+    else:
+        flash('That player was not on the shortlist.', 'error')
+    return redirect(url_for('players.player_profile', player_id=player_id))

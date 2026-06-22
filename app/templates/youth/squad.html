@@ -20,6 +20,11 @@
         {{ g }}
       </a>
     {% endfor %}
+    {% if current_user.has_role('admin', 'technical_director', 'nt_staff') %}
+      <a href="{{ url_for('youth.shortlist') }}"
+         class="px-3 py-1.5 rounded font-semibold"
+         style="background:var(--bg);color:var(--text-muted);border:1px solid var(--border);">★ Shortlist</a>
+    {% endif %}
     <a href="{{ url_for('youth.new_youth', slug=slug) }}"
        class="ml-auto px-3 py-1.5 rounded font-semibold text-white"
        style="background:var(--accent);">+ Add {{ group }} player</a>

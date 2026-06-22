@@ -41,10 +41,30 @@
 | **/nt senior-only + name search** | **✅ Complete** | /nt restricted to age_group=senior (NULL-safe); client-side Alpine live EN/Arabic name search. v1.3.3 |
 | **Evaluations: position played in match** | **✅ Complete** | Required per-evaluation match-position dropdown (positions table, defaults to primary); persisted on `evaluations.position_played_id`; shown on view + history. Display-only — criteria + registered position unchanged. 13/13 E2E. v1.4.0 |
 | **Admin bulk position-assign screen** | **✅ Complete** | `/admin/assign-positions` (admin+TD) lists active position-less players + grouped picker; bulk-sets `primary_position_id` so imported players become evaluatable. Evaluate guard unchanged. 12/12 E2E. v1.4.1 |
+| **Youth shortlist (tracked prospects)** | **✅ Complete** | `youth_shortlist` table; add/remove + note from player profile; `/youth/shortlist` tab (admin/TD/nt_staff). Add youth-only; kept after promotion (manual remove). 19/19 E2E. v1.5.0 |
 | Phase 8.2: Auth hardening v2 | Queued (v1.1) | CSRF token review, password reset email, 2FA/MFA |
 | Phase 10: AI features | Queued (post-v1) | Gemini integration |
 
 ## Current phase
+
+**Youth shortlist (tracked prospects) — complete. v1.5.0.**
+
+A flat watchlist of youth prospects tracked toward senior/NT call-up, in one
+place instead of hunting across U17/U20/U23. New `youth_shortlist` table
+(one row per player, `UNIQUE(player_id)`). Add/remove + note from the player
+profile (admin/TD/nt_staff toggle); view in a new Youth-area **Shortlist
+tab** (`/youth/shortlist`), mirroring the residents-tab pattern. Add is
+idempotent (`ON CONFLICT … DO UPDATE` refreshes the note). Players are added
+only while youth, but **kept after promotion to senior** (manual remove
+only) — a tracked prospect who made it; the list shows their current
+age_group. Scout/viewer/youth_nt are excluded (403). `migrations/_e2e_youth_shortlist.py`
+19/19; full regression green incl. youth_security 24/0.
+
+**Deploy note (Ali): schema change.** Back up, run
+`migrations/youth_shortlist.sql` against prod (creates the table) BEFORE the
+app restart, then build + restart.
+
+---
 
 **Admin bulk position-assign screen — complete. v1.4.1.**
 

@@ -70,3 +70,82 @@ def get_youth_squad(group: str) -> list:
             (group,)
         )
         return cur.fetchall()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Youth shortlist (tracked prospects) — flat watchlist
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_shortlist_entry(player_id: int) -> dict | None:
+    """Return this player's shortlist row (id, note, added_by, added_at) or None."""
+    conn = get_db()
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, player_id, note, added_by, added_at "
+            "FROM youth_shortlist WHERE player_id = %s",
+            (player_id,)
+        )
+        return cur.fetchone()
+
+
+def add_or_update_shortlist(player_id: int, note: str | None, user_id: int) -> None:
+    """Add a player to the shortlist, or refresh the note if already on it.
+
+    UNIQUE(player_id) makes this idempotent via ON CONFLICT — re-adding never
+    duplicates. `added_by`/`added_at` are preserved on note-update (only the
+    note changes). Explicit commit (psycopg2 discipline)."""
+    conn = get_db()
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO youth_shortlist (player_id, note, added_by)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (player_id) DO UPDATE SET note = EXCLUDED.note
+            """,
+            (player_id, note, user_id)
+        )
+    conn.commit()
+
+
+def remove_from_shortlist(player_id: int) -> bool:
+    """Remove a player from the shortlist. Returns True if a row was removed.
+    Explicit commit."""
+    conn = get_db()
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM youth_shortlist WHERE player_id = %s", (player_id,))
+        removed = cur.rowcount > 0
+    conn.commit()
+    return removed
+
+
+def get_shortlist() -> list:
+    """
+    All shortlisted players for the Shortlist tab — joined to position +
+    age_group + the adding user. Includes players KEPT after promotion
+    (their current age_group is shown). Ordered most-recently-added first.
+
+    Standing rule: the SELECT includes player_id, national_id, position.
+    """
+    conn = get_db()
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT pl.id, pl.full_name, pl.full_name_ar, pl.national_id,
+                   pl.age_group, pl.current_club, pl.nationality_code,
+                   pl.primary_position_id,
+                   p.code  AS position_code, p.name AS position_name,
+                   pg.code AS group_code,
+                   c.name  AS club_name,
+                   sl.note, sl.added_at,
+                   u.full_name AS added_by_name
+            FROM   youth_shortlist sl
+            JOIN   players pl ON pl.id = sl.player_id
+            LEFT JOIN positions p        ON p.id  = pl.primary_position_id
+            LEFT JOIN position_groups pg ON pg.id = p.position_group_id
+            LEFT JOIN clubs c            ON c.id  = pl.club_id
+            LEFT JOIN users u            ON u.id  = sl.added_by
+            WHERE  pl.is_active = TRUE
+            ORDER  BY sl.added_at DESC, pl.full_name
+            """
+        )
+        return cur.fetchall()

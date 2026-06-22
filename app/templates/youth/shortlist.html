@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}Youth Shortlist — BFA Scout{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 py-8">
+
+  <div class="flex items-center gap-3 mb-2">
+    <a href="{{ url_for('youth.index') }}"
+       class="text-sm" style="color:var(--text-muted);">&larr; Youth NT</a>
+    <h1 class="text-2xl font-bold" style="color:var(--text);">Youth Shortlist</h1>
+  </div>
+  <p class="text-sm mb-4" style="color:var(--text-muted);">
+    Youth prospects being tracked toward senior/NT call-up. Add or remove
+    players from their profile page. Promoted prospects stay here until
+    removed manually.
+  </p>
+
+  {# Tab strip — mirrors the U17/U20/U23 squad strip; Shortlist active. #}
+  <div class="flex gap-2 my-4 text-sm">
+    {% for g, s in [('U17','u17'), ('U20','u20'), ('U23','u23')] %}
+      <a href="{{ url_for('youth.squad', slug=s) }}"
+         class="px-3 py-1.5 rounded font-semibold"
+         style="background:var(--bg);color:var(--text-muted);border:1px solid var(--border);">
+        {{ g }}
+      </a>
+    {% endfor %}
+    <a href="{{ url_for('youth.shortlist') }}"
+       class="px-3 py-1.5 rounded font-semibold"
+       style="background:var(--brand);color:#fff;">★ Shortlist</a>
+  </div>
+
+  {% if players %}
+    <div class="rounded-xl overflow-hidden"
+         style="background:var(--surface);border:1px solid var(--border);">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr style="background:var(--bg);border-bottom:1px solid var(--border);">
+              <th class="px-4 py-3 text-left" style="color:var(--text-muted);">Player</th>
+              <th class="px-4 py-3 text-left" style="color:var(--text-muted);">Squad</th>
+              <th class="px-4 py-3 text-left" style="color:var(--text-muted);">Position</th>
+              <th class="px-4 py-3 text-left" style="color:var(--text-muted);">Note</th>
+              <th class="px-4 py-3 text-left" style="color:var(--text-muted);">Added</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in players %}
+              <tr style="border-bottom:1px solid var(--border);">
+                <td class="px-4 py-3">
+                  <div class="flex items-center gap-3">
+                    <img src="{{ get_player_photo(p.id) }}" alt=""
+                         class="rounded shrink-0"
+                         style="width:32px;height:32px;object-fit:cover;background:var(--bg);"
+                         onerror="this.src='{{ url_for('static', filename='photos/placeholder.svg') }}'">
+                    <div class="min-w-0">
+                      <a href="{{ url_for('players.player_profile', player_id=p.id) }}"
+                         class="font-semibold" style="color:var(--text);">{{ p.full_name }}</a>
+                      {% if p.full_name_ar %}
+                        <span class="text-xs ml-1" style="color:var(--text-muted);direction:rtl;">{{ p.full_name_ar }}</span>
+                      {% endif %}
+                    </div>
+                  </div>
+                </td>
+                <td class="px-4 py-3" style="color:var(--text);">{{ p.age_group or '—' }}</td>
+                <td class="px-4 py-3" style="color:var(--text);">
+                  {{ p.position_name or '—' }}
+                  {% if p.group_code %}<span class="text-xs" style="color:var(--text-muted);">({{ p.group_code }})</span>{% endif %}
+                </td>
+                <td class="px-4 py-3" style="color:var(--text-muted);max-width:22rem;">{{ p.note or '—' }}</td>
+                <td class="px-4 py-3 text-xs" style="color:var(--text-muted);white-space:nowrap;">
+                  {{ p.added_at.strftime('%Y-%m-%d') if p.added_at else '—' }}
+                  {% if p.added_by_name %}<br>by {{ p.added_by_name }}{% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% else %}
+    <div class="rounded-xl p-6"
+         style="background:var(--surface);border:1px solid var(--border);">
+      <p class="text-sm" style="color:var(--text-muted);">
+        No players on the shortlist yet. Open a youth player's profile and
+        click <strong>+ Add to shortlist</strong> to start tracking them.
+      </p>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}
