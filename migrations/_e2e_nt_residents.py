@@ -156,8 +156,13 @@ try:
     # but still cannot reach the senior /nt squad page (asserted below).
     s, _, _ = http(scout_op, "GET", "/nt/residents"); chk("4 scout → 200 (committee access)", s == 200, f"got {s}")
     s, _, _ = http(view_op,  "GET", "/nt/residents"); chk("5 viewer → 403",   s == 403, f"got {s}")
-    # Boundary: scout must NOT have the senior /nt squad page.
-    s, _, _ = http(scout_op, "GET", "/nt");           chk("4b scout senior /nt → 403", s == 403, f"got {s}")
+    # Boundary: scout still cannot SEE the senior /nt squad — they're looped
+    # to /players (friendly redirect from the 'Citizens' tab), not shown it.
+    s, sc_nt_body, final = http(scout_op, "GET", "/nt")
+    chk("4b scout senior /nt → redirected to /players (no squad shown)",
+        final is not None and final.rstrip('/').endswith('/players')
+        and "National Team Workspace" not in sc_nt_body,
+        f"final={final}")
 
     # ── Case 6: anonymous → login ─────────────────────────────────
     print("\n=== Case 6: anonymous ===")

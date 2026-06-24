@@ -7,10 +7,10 @@ not included — see CHANGELOG v0.7.0 for the open question). The
 page shows the BPL-eligible squad list with each player's
 NT-evaluation count.
 """
-from flask import Blueprint, render_template
+from flask import Blueprint, render_template, redirect, url_for, abort
 from flask_login import login_required, current_user
 
-from app.auth.decorators import admin_or_nt_staff_required, residents_view_required
+from app.auth.decorators import residents_view_required
 from app.nt.helpers import get_eligible_squad_players, get_resident_players
 
 
@@ -19,9 +19,18 @@ bp = Blueprint('nt', __name__, url_prefix='/nt')
 
 @bp.route('/')
 @login_required
-@admin_or_nt_staff_required
 def index():
-    """National Team workspace landing page (citizens track)."""
+    """National Team workspace landing page (citizens / senior squad track).
+
+    Senior squad stays admin/TD/nt_staff only. But scouts (committee) CAN
+    see /nt/residents, whose tab strip links here ("Citizens") — so rather
+    than bounce a scout with a bare 403, loop them to the players list.
+    Other non-permitted roles (viewer, youth_nt) still get 403.
+    """
+    if not current_user.has_role('admin', 'technical_director', 'nt_staff'):
+        if current_user.has_role('scout'):
+            return redirect(url_for('players.list_players'))
+        abort(403)
     squad = get_eligible_squad_players()
     return render_template('nt/index.html', squad=squad)
 

@@ -27,9 +27,13 @@ E2E that proves and locks the boundary** rather than new filtering.
 ### Part B — scouts can view `/nt/residents` (eligibility), not the senior squad
 `/nt/` and `/nt/residents` shared `admin_or_nt_staff_required`. **Split**
 into a new `residents_view_required` (admin/TD/nt_staff + **scout**, NOT
-viewer) on `/nt/residents` only; `/nt/` index unchanged → the senior squad
-stays closed to scouts. Nav ([base.html](app/templates/base.html)): "Residents"
-link now shown to scouts; "National Team" link stays admin/TD/nt_staff.
+viewer) on `/nt/residents` only; the senior squad stays closed to scouts.
+Nav ([base.html](app/templates/base.html)): "Residents" link now shown to scouts;
+"National Team" link stays admin/TD/nt_staff. The senior `/nt` index
+([nt/__init__.py](app/nt/__init__.py)) now **loops scouts to `/players/`** instead of a
+bare 403 — so the residents-page "Citizens" tab (which links to `/nt`)
+doesn't dead-end for a scout; they still never see the squad content.
+Other non-permitted roles (viewer, youth_nt) still get 403.
 
 ### Verification
 - New `migrations/_e2e_scout_nt_eval_hidden.py` — **20/20** (security gate):

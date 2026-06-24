@@ -193,8 +193,13 @@ try:
     s, res_html, _ = http(scout, "GET", "/nt/residents")
     chk("B1 scout GET /nt/residents → 200", s == 200, f"got {s}")
     chk("B2 residents page renders eligibility content", RESIDENT in res_html or "Eligible" in res_html)
-    s, _, _ = http(scout, "GET", "/nt")
-    chk("B3 scout GET senior /nt → still 403 (not newly opened)", s == 403, f"got {s}")
+    # Scout hitting the senior /nt ("Citizens" tab) is LOOPED to /players —
+    # friendly redirect, NOT a 403, and never sees the senior squad.
+    s, nt_body, final = http(scout, "GET", "/nt")
+    chk("B3 scout GET senior /nt → redirected to /players (not 403, no squad)",
+        s == 200 and final is not None and final.rstrip('/').endswith('/players')
+        and "National Team Workspace" not in nt_body,
+        f"status={s} final={final}")
     s, _, _ = http(viewer, "GET", "/nt/residents")
     chk("B4 viewer GET /nt/residents → 403 (not granted)", s == 403, f"got {s}")
     for name, op in [('admin', admin), ('td', td), ('nt_staff', nt)]:

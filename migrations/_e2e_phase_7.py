@@ -220,11 +220,15 @@ try:
     chk("Case 2: admin GET /nt returns 200", status == 200,
         f"got: {status}")
 
-    # Case 3: scout
+    # Case 3: scout — senior /nt squad stays closed to scouts, but instead of
+    # a bare 403 they're LOOPED to /players (so the residents 'Citizens' tab
+    # doesn't dead-end). Scout still never sees the senior squad content.
     scout_op = login(SCOUT_EMAIL, SCOUT_PW)
-    status, _, _, _ = http(scout_op, "GET", "/nt/")
-    chk("Case 3: scout GET /nt returns 403", status == 403,
-        f"got: {status}")
+    status, body, final, _ = http(scout_op, "GET", "/nt/")
+    chk("Case 3: scout GET /nt loops to /players (not 403, no squad)",
+        status == 200 and (final or '').rstrip('/').endswith('/players')
+        and "National Team Workspace" not in body,
+        f"status={status} final={final}")
 
     # Case 4: viewer (substituting for 'coach' — see header comment)
     viewer_op = login(VIEWER_EMAIL, VIEWER_PW)
