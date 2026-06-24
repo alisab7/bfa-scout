@@ -64,20 +64,18 @@
   <div class="max-w-5xl mx-auto px-4 py-8 md:py-12">
 
     <!-- Welcome -->
-    <div class="mb-8 flex items-center justify-between gap-6 flex-wrap">
-      <div>
-        <h1 class="text-2xl md:text-3xl font-bold mb-1" style="color:var(--text);">
-          Welcome back, {{ current_user.full_name }}
-        </h1>
-        <p class="text-sm" style="color:var(--text-muted);">
-          Signed in as <span style="color:var(--accent);">{{ ROLE_LABELS.get(current_user.role, current_user.role | replace('_', ' ') | title) }}</span>
-        </p>
-      </div>
+    <div class="mb-8 text-center">
       <img src="{{ url_for('static', filename='img/bfa-logo.png') }}"
            alt="Bahrain Football Association"
-           class="shrink-0"
+           class="mx-auto mb-4"
            style="height:140px;width:auto;"
            onerror="this.style.display='none';">
+      <h1 class="text-2xl md:text-3xl font-bold mb-1" style="color:var(--text);">
+        Welcome back, {{ current_user.full_name }}
+      </h1>
+      <p class="text-sm" style="color:var(--text-muted);">
+        Signed in as <span style="color:var(--accent);">{{ ROLE_LABELS.get(current_user.role, current_user.role | replace('_', ' ') | title) }}</span>
+      </p>
     </div>
 
     <!-- Quick-action cards -->
