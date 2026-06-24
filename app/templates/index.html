@@ -63,22 +63,19 @@
   {# ── Authenticated dashboard ───────────────────────────────────── #}
   <div class="max-w-5xl mx-auto px-4 py-8 md:py-12">
 
-    <!-- Welcome (text stays left-aligned) -->
-    <div class="mb-6">
+    <!-- BFA logo on top, then the welcome message -->
+    <div class="mb-8 text-center">
+      <img src="{{ url_for('static', filename='img/bfa-logo.png') }}"
+           alt="Bahrain Football Association"
+           class="mx-auto mb-4"
+           style="height:140px;width:auto;"
+           onerror="this.style.display='none';">
       <h1 class="text-2xl md:text-3xl font-bold mb-1" style="color:var(--text);">
         Welcome back, {{ current_user.full_name }}
       </h1>
       <p class="text-sm" style="color:var(--text-muted);">
         Signed in as <span style="color:var(--accent);">{{ ROLE_LABELS.get(current_user.role, current_user.role | replace('_', ' ') | title) }}</span>
       </p>
-    </div>
-
-    <!-- BFA logo — centered -->
-    <div class="flex justify-center mb-8">
-      <img src="{{ url_for('static', filename='img/bfa-logo.png') }}"
-           alt="Bahrain Football Association"
-           style="height:140px;width:auto;"
-           onerror="this.style.display='none';">
     </div>
 
     <!-- Quick-action cards -->
