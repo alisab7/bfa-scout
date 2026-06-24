@@ -44,6 +44,30 @@ def compute_suggested_eligibility(residency_start) -> date | None:
         return date(target_year, residency_start.month, residency_start.day - 1)
 
 
+def humanize_time_until(target_date) -> str | None:
+    """Return the countdown string "Eligible in Xy Ym" for a FUTURE date,
+    or None if `target_date` is missing / today / in the past.
+
+    SINGLE SOURCE of the countdown format: `compute_eligibility_status`
+    (the player profile) uses it for pending players, and the
+    /nt/residents table reuses the exact same function so the values match
+    everywhere — no duplicated date math.
+    """
+    if not target_date:
+        return None
+    if isinstance(target_date, str):
+        try:
+            target_date = date.fromisoformat(target_date)
+        except ValueError:
+            return None
+    delta_days = (target_date - date.today()).days
+    if delta_days <= 0:
+        return None
+    diff_years = delta_days // 365
+    diff_months = (delta_days % 365) // 30
+    return f"Eligible in {diff_years}y {diff_months}m"
+
+
 def _resolve_eligibility_date(get_fn) -> date | None:
     """
     Single source of truth for a player's eligibility date.
@@ -186,11 +210,8 @@ def compute_eligibility_status(player) -> dict:
                     "note": f"From {edate.strftime('%Y-%m-%d')}",
                     "is_eligible_now": True, "age_at_eligibility": None,
                     "status_code": "eligible_now"}
-        delta_days = (edate - today).days
-        diff_years = delta_days // 365
-        diff_months = (delta_days % 365) // 30
         return {"icon":  "⏳",
-                "label": f"Eligible in {diff_years}y {diff_months}m",
+                "label": humanize_time_until(edate),
                 "note":  f"From {edate.strftime('%Y-%m-%d')}",
                 "is_eligible_now": False, "age_at_eligibility": _age_at_elig,
                 "status_code": "eligible_future"}
@@ -218,12 +239,9 @@ def compute_eligibility_status(player) -> dict:
                         "age_at_eligibility": None,
                         "status_code": "eligible_now",
                     }
-                delta_days = (suggested - today).days
-                diff_years = delta_days // 365
-                diff_months = (delta_days % 365) // 30
                 return {
                     "icon":  "⏳",
-                    "label": f"Eligible in {diff_years}y {diff_months}m",
+                    "label": humanize_time_until(suggested),
                     "note":  (f"Suggested {suggested.strftime('%Y-%m-%d')} "
                               f"(Article 5; admin to confirm)"),
                     "is_eligible_now": False,

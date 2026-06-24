@@ -1,5 +1,38 @@
 # Changelog
 
+## v1.6.1 — Residents table: eligibility countdown on pending players (2026-06-24)
+
+`/nt/residents` "Still Counting" rows now show the **"Eligible in Xy Ym"**
+countdown next to the date — the exact string the player profile shows.
+No new date math, no schema change.
+
+### What landed
+- **Single source of the countdown** — extracted the formula (inlined twice
+  in `compute_eligibility_status`) into `humanize_time_until(target_date)`
+  ([eligibility.py](app/players/eligibility.py)): returns "Eligible in Xy Ym" for a future
+  date, `None` for missing/today/past. The two profile branches now call
+  it (byte-identical output — no behaviour change), and the residents
+  helper reuses the **same** function, so values always match.
+- **Residents helper** ([nt/helpers.py](app/nt/helpers.py)) — `get_resident_players`
+  attaches `p['countdown'] = humanize_time_until(eligible_from_effective)`
+  (None for eligible-now / no-date rows).
+- **Template** ([_residents_table.html](app/templates/nt/_residents_table.html)) — pending
+  ("Still Counting") rows with a date render "(Eligible in Xy Ym)" under the
+  date. Eligible-now rows and the eligible-now/still-counting split are
+  unchanged.
+
+### Verification
+- New `migrations/_e2e_residents_countdown.py` — **5/5**: ~6mo pending →
+  "Eligible in 0y 6m"; ~14mo → "Eligible in 1y 2m"; eligible-now → no
+  countdown; **residents countdown == the profile's value** for the same
+  player.
+- Regression: nt-residents 17/0, eligibility-badge 13/0, 5c2.1 48/0,
+  scout-nt-eval 20/0, /nt 11/0, phase_7 29/0, youth 28/0 + 24/0,
+  eval-position 13/0, assign-positions 12/0, youth-shortlist 24/0,
+  bulk-import 40/0, Phase 9 46/0, v1.0.2 pass. (Pre-existing unrelated
+  failures: 5c2 eval-lock/orphan, phase_6_1 passport rendering — not
+  touched by this change.)
+
 ## v1.6.0 — Scout access: hide NT-staff evaluations + grant residents view (2026-06-24)
 
 Two committee-access changes, governance/data-separation focused. No schema

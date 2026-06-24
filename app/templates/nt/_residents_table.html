@@ -57,6 +57,11 @@
                   <span style="color:var(--accent);font-weight:600;">
                     {{ p.eligible_from_effective }}
                   </span>
+                  {% if p.countdown %}
+                    <span class="block text-xs mt-0.5" style="color:var(--text-muted);">
+                      ({{ p.countdown }})
+                    </span>
+                  {% endif %}
                 {% else %}
                   <span style="color:#22C55E;font-weight:600;">
                     {{ p.eligible_from_effective }}

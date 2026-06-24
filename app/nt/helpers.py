@@ -14,7 +14,7 @@ split into eligible-now vs still-counting, reusing the same date math.
 from datetime import date
 
 from app.db import get_db
-from app.players.eligibility import compute_suggested_eligibility
+from app.players.eligibility import compute_suggested_eligibility, humanize_time_until
 
 
 def get_eligible_squad_players() -> list[dict]:
@@ -144,6 +144,10 @@ def get_resident_players() -> tuple[list[dict], list[dict]]:
     for p in rows:
         eff = _effective_eligibility_date(p)
         p["eligible_from_effective"] = eff
+        # Countdown ("Eligible in Xy Ym") — the SAME string the player
+        # profile shows, via the shared helper. None for eligible-now /
+        # no-date players (so only future-dated pending rows render it).
+        p["countdown"] = humanize_time_until(eff)
         if eff is not None and eff <= today:
             eligible_now.append(p)
         else:
