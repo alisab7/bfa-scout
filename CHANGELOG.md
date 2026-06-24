@@ -1,5 +1,50 @@
 # Changelog
 
+## v1.6.0 — Scout access: hide NT-staff evaluations + grant residents view (2026-06-24)
+
+Two committee-access changes, governance/data-separation focused. No schema
+change (`created_by_role` already exists).
+
+### Part A — NT-staff evaluations are invisible to scouts (audit + lock)
+**Audit finding: already enforced on every scout-facing surface.** The
+Phase-7 rule (`_nt_visibility_clause`: scouts/viewers get
+`AND created_by_role != 'nt_staff'`) is threaded through every
+filter-aware helper (`get_evaluation`, `get_player_evaluations`,
+`get_player_bio_counts`, `get_evaluation_count_active`,
+`get_player_evaluation_aggregate`, `nt_readiness_summary`) **and every call
+site passes `current_user.role`** — verified across: profile history list +
+"N on record" + bio count, eligibility card, eval view (`abort(404)` when
+hidden — **404, not 403**), update-draft, compare scout section, and the
+passport PDF. The `/nt` NT-eval count query is on a scout-blocked page; no
+JSON/API endpoint returns evals. **No code gaps — so this ships a security
+E2E that proves and locks the boundary** rather than new filtering.
+  - Flagged for Ali: hide set = **`nt_staff` only** (scouts still see
+    scout/admin/TD evals). And one obscure non-surface — the
+    position-change *orphan-score count* tallies all evals' scores incl.
+    NT; left as-is (a transient number, not an eval/list/badge; fixing it
+    risks the orphan add/delete flow).
+
+### Part B — scouts can view `/nt/residents` (eligibility), not the senior squad
+`/nt/` and `/nt/residents` shared `admin_or_nt_staff_required`. **Split**
+into a new `residents_view_required` (admin/TD/nt_staff + **scout**, NOT
+viewer) on `/nt/residents` only; `/nt/` index unchanged → the senior squad
+stays closed to scouts. Nav ([base.html](app/templates/base.html)): "Residents"
+link now shown to scouts; "National Team" link stays admin/TD/nt_staff.
+
+### Verification
+- New `migrations/_e2e_scout_nt_eval_hidden.py` — **20/20** (security gate):
+  scout sees own eval not the NT eval; count = 1 not 2; direct NT-eval URL →
+  **404** (not 403); own eval → 200; viewer also 404; admin/TD/nt_staff see
+  both (count 2) + NT-eval 200 unchanged. Part B: scout `/nt/residents` 200,
+  senior `/nt` 403, viewer residents 403, admin/TD/nt_staff 200, nav split.
+- Updated `_e2e_nt_residents` (now 17/0) — the two assertions that encoded
+  the old "scout blocked from residents" rule refreshed to the new boundary
+  (scout 200 + sees nav link, still 403 on senior /nt).
+- Regression: phase_7 29/0, phase_7.1 8/0, /nt 11/0, youth 28/0 + 24/0, 5d
+  26/0, 5d-1 39/0, eval-position 13/0, assign-positions 12/0, youth-shortlist
+  24/0, bulk-import 40/0, Phase 9 46/0, v1.0.2 audit pass. admin/TD/nt_staff
+  views unchanged.
+
 ## v1.5.1 — Youth shortlist UX: button → modal (2026-06-20)
 
 Front-end/template change only — **no backend, schema, route, or access

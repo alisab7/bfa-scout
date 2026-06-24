@@ -43,6 +43,14 @@ nt_staff_required = role_required('nt_staff')
 admin_or_nt_staff_required = role_required('admin', 'technical_director',
                                            'nt_staff')
 
+# Residents eligibility view (/nt/residents) is the ONE /nt surface that
+# scouts (committee members) may see — so they can read the
+# eligible-now vs still-counting pathway. This is split from
+# `admin_or_nt_staff_required` deliberately: the senior /nt squad page
+# stays closed to scouts; only residents opens to them. Viewer excluded.
+residents_view_required = role_required('admin', 'technical_director',
+                                        'nt_staff', 'scout')
+
 # ── Youth NT decorators (the first RESTRICTED role) ──────────────────────────
 #
 # youth_nt is the first role that is BLOCKED FROM SEEING DATA, not just from

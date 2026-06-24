@@ -10,7 +10,7 @@ NT-evaluation count.
 from flask import Blueprint, render_template
 from flask_login import login_required, current_user
 
-from app.auth.decorators import admin_or_nt_staff_required
+from app.auth.decorators import admin_or_nt_staff_required, residents_view_required
 from app.nt.helpers import get_eligible_squad_players, get_resident_players
 
 
@@ -28,7 +28,7 @@ def index():
 
 @bp.route('/residents')
 @login_required
-@admin_or_nt_staff_required
+@residents_view_required
 def residents():
     """
     Coaching-team view of the naturalization pathway: active
@@ -36,8 +36,10 @@ def residents():
     clock complete) and "Still Counting" (future-eligible — shows the
     date, or "date not set" when no residency start is recorded).
 
-    Same access gate as /nt (admin + TD + nt_staff). Reuses the shared
-    eligibility date math; no schema/role changes.
+    Access: admin + TD + nt_staff + SCOUT (committee members) — split
+    from /nt so scouts can read eligibility WITHOUT seeing the senior
+    /nt squad page (`index` stays admin_or_nt_staff_required). Viewer
+    still excluded. Page content unchanged.
     """
     eligible_now, still_counting = get_resident_players()
     return render_template('nt/residents.html',

@@ -42,10 +42,30 @@
 | **Evaluations: position played in match** | **✅ Complete** | Required per-evaluation match-position dropdown (positions table, defaults to primary); persisted on `evaluations.position_played_id`; shown on view + history. Display-only — criteria + registered position unchanged. 13/13 E2E. v1.4.0 |
 | **Admin bulk position-assign screen** | **✅ Complete** | `/admin/assign-positions` (admin+TD) lists active position-less players + grouped picker; bulk-sets `primary_position_id` so imported players become evaluatable. Evaluate guard unchanged. 12/12 E2E. v1.4.1 |
 | **Youth shortlist (tracked prospects)** | **✅ Complete** | `youth_shortlist` table; add/remove + note from player profile; `/youth/shortlist` tab (admin/TD/nt_staff). Add youth-only; kept after promotion (manual remove). 19/19 E2E. v1.5.0 |
+| **Scout access: hide NT evals + residents view** | **✅ Complete** | Audit confirmed NT-staff evals already invisible to scouts on every surface (404 not 403 on direct URL); shipped a security E2E to lock it. Split residents decorator so scouts get `/nt/residents` only (senior `/nt` stays closed). 20/20 E2E. v1.6.0 |
 | Phase 8.2: Auth hardening v2 | Queued (v1.1) | CSRF token review, password reset email, 2FA/MFA |
 | Phase 10: AI features | Queued (post-v1) | Gemini integration |
 
 ## Current phase
+
+**Scout access: hide NT-staff evaluations + grant residents view — complete. v1.6.0.**
+
+Two committee-access changes. **Part A** was an audit: NT-staff evaluations
+are already invisible to scouts on every surface (profile history + counts,
+eligibility card, eval view → 404-not-403, compare, passport) via the
+Phase-7 `_nt_visibility_clause` threaded through every helper + call site —
+**no gaps**, so it ships a security E2E (`_e2e_scout_nt_eval_hidden.py`,
+20/20) that proves and locks the boundary. Hide set = `nt_staff` only
+(flagged for Ali). **Part B** split the shared `/nt` decorator: new
+`residents_view_required` (admin/TD/nt_staff + **scout**, not viewer) on
+`/nt/residents` only — scouts (committee) can read eligibility; the senior
+`/nt` squad page stays closed to them; nav "Residents" shown to scouts,
+"National Team" not. No schema change.
+
+**Deploy note (Ali):** pure-code, no migration (`created_by_role` already
+exists). Back up first (security-sensitive), then normal code deploy.
+
+---
 
 **Youth shortlist (tracked prospects) — complete. v1.5.0.**
 

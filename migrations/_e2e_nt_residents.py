@@ -152,8 +152,12 @@ try:
     s, _, _ = http(nt_op,    "GET", "/nt/residents"); chk("1 nt_staff → 200", s == 200, f"got {s}")
     s, _, _ = http(admin_op, "GET", "/nt/residents"); chk("2 admin → 200",    s == 200, f"got {s}")
     s, _, _ = http(td_op,    "GET", "/nt/residents"); chk("3 TD → 200",       s == 200, f"got {s}")
-    s, _, _ = http(scout_op, "GET", "/nt/residents"); chk("4 scout → 403",    s == 403, f"got {s}")
+    # Scout (committee) was GRANTED residents access — they read eligibility
+    # but still cannot reach the senior /nt squad page (asserted below).
+    s, _, _ = http(scout_op, "GET", "/nt/residents"); chk("4 scout → 200 (committee access)", s == 200, f"got {s}")
     s, _, _ = http(view_op,  "GET", "/nt/residents"); chk("5 viewer → 403",   s == 403, f"got {s}")
+    # Boundary: scout must NOT have the senior /nt squad page.
+    s, _, _ = http(scout_op, "GET", "/nt");           chk("4b scout senior /nt → 403", s == 403, f"got {s}")
 
     # ── Case 6: anonymous → login ─────────────────────────────────
     print("\n=== Case 6: anonymous ===")
@@ -196,8 +200,10 @@ try:
     chk("12a nt_staff sees /nt/residents nav link",
         "/nt/residents" in nt_home)
     _, scout_home, _ = http(scout_op, "GET", "/")
-    chk("12b scout does NOT see /nt/residents nav link",
-        "/nt/residents" not in scout_home)
+    chk("12b scout NOW sees /nt/residents nav link (committee access)",
+        "/nt/residents" in scout_home)
+    chk("12c scout does NOT see the senior National Team nav link",
+        ">National Team<" not in scout_home)
 
 finally:
     print("\n(cleanup)")
