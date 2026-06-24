@@ -29,6 +29,7 @@ from app.evaluations.helpers import (
 )
 from app.players.eligibility import (
     compute_suggested_eligibility, age_at_eligibility as _age_at_eligibility,
+    compute_eligibility_status,
 )
 from app.players.nationalities import NATIONALITY_LABEL, ALPHA3_TO_ALPHA2
 from app.players.helpers import age as _age_of
@@ -89,6 +90,17 @@ def _build_passport_eligibility(player: dict) -> dict:
 
     # Priority 2: birthright (eligible regardless of date)
     if nat == "bahraini":
+        # Passport holder (naturalized): Bahraini by passport with an origin
+        # country kept. NT eligibility runs the 5-year residency clock — reuse
+        # `compute_eligibility_status` verbatim so the PDF's label/countdown is
+        # IDENTICAL to the player profile (no new date math; only mapped to the
+        # passport dict shape). Born citizens (no origin) fall through to the
+        # plain-citizen line below, unchanged.
+        if player.get("origin_country"):
+            es = compute_eligibility_status(player)
+            return {"icon": es["icon"], "label": es["label"], "note": es["note"],
+                    "is_eligible_now": es["is_eligible_now"],
+                    "age_at_eligibility": es["age_at_eligibility"]}
         return {"icon": "✅", "label": "Eligible now",
                 "note": "Bahraini citizen",
                 "is_eligible_now": True, "age_at_eligibility": None}
@@ -255,6 +267,8 @@ def _fetch_player_bio(player_id: int) -> dict | None:
                    pl.eligibility_notes_admin,
                    pl.bahrain_residency_start_date, pl.bahrain_residency_notes,
                    pl.nationality_code, pl.club_id,
+                   -- Passport holders: origin country (mirrors the profile SELECT)
+                   pl.origin_country, pl.origin_country_code,
                    p.code  AS position_code, p.name AS position_name,
                    pg.code AS position_group_code,
                    pg.name_en AS position_group_name,
@@ -369,6 +383,12 @@ def get_passport_data(player_id: int, mode: str = 'full',
     # Phase 6.1: inline SVG instead of emoji — emoji fonts in WeasyPrint
     # are unreliable across systems. flag_svg is None if no flag available.
     player['flag_svg']           = _flag_svg_inline(player.get('nationality_code'))
+    # Passport holders: origin label + flag (profile-parity; only surfaced in
+    # the template when nationality_status='bahraini' AND origin_country set).
+    player['origin_label']       = NATIONALITY_LABEL.get(
+        player.get('origin_country_code') or '', None
+    ) or player.get('origin_country')
+    player['origin_flag_svg']    = _flag_svg_inline(player.get('origin_country_code'))
 
     # ── Eligibility card (Phase 6.1: passport-specific wording) ─────
     eligibility = _build_passport_eligibility(player)

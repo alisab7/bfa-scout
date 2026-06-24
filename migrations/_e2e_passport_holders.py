@@ -57,6 +57,16 @@ def http(op, method, path, *, data=None):
         return e.code, e.read().decode("utf-8", "replace"), None
 
 
+def pdf_text(op, path):
+    """GET a passport PDF over real HTTP and extract its text layer."""
+    from io import BytesIO
+    from pypdf import PdfReader
+    req = Request(BASE + path, method="GET")
+    raw = op.open(req).read()
+    pages = PdfReader(BytesIO(raw)).pages
+    return "\n".join((p.extract_text() or "") for p in pages)
+
+
 def csrf_of(html):
     m = re.search(r'name=["\']csrf_token["\']\s+value=["\']([^"\']+)["\']', html)
     return m.group(1) if m else None
@@ -233,6 +243,39 @@ try:
     p9e = prof(ids['citizen'])
     chk("P9f cleared player is plain 'Citizen' again (no passport-holder)",
         "Citizen" in p9e and "Passport holder" not in p9e)
+
+    # ── PDF passport export (real HTTP → extract text layer) ──────────
+    print("\n=== P10: passport holder pending — PDF ===")
+    pdf_pend = pdf_text(admin, f"/players/{ids['ph_pend']}/passport.pdf")
+    chk("P10a PDF shows origin country (Brazil)", "Brazil" in pdf_pend)
+    chk("P10b PDF shows 'Passport holder'", "Passport holder" in pdf_pend)
+    chk("P10c PDF shows the countdown 'Eligible in 0y 6m'",
+        "Eligible in 0y 6m" in pdf_pend)
+    chk("P10d PDF keeps nationality Bahrain (not relabeled foreign)",
+        "Bahrain" in pdf_pend)
+
+    print("\n=== P11: passport holder, 5y complete — PDF ===")
+    pdf_done = pdf_text(admin, f"/players/{ids['ph_done']}/passport.pdf")
+    chk("P11a PDF eligible now (no future countdown)",
+        "Eligible now" in pdf_done and "Eligible in" not in pdf_done)
+    chk("P11b PDF still flags passport holder", "Passport holder" in pdf_done)
+
+    print("\n=== P12: born citizen — PDF unchanged ===")
+    # ids['citizen'] was made a holder in P9 then cleared in P9e → plain citizen.
+    pdf_cit = pdf_text(admin, f"/players/{ids['citizen']}/passport.pdf")
+    chk("P12a PDF shows 'Eligible now' / 'Bahraini citizen'",
+        "Eligible now" in pdf_cit and "Bahraini citizen" in pdf_cit)
+    chk("P12b PDF has NO passport-holder line", "Passport holder" not in pdf_cit)
+
+    print("\n=== P13: foreign resident — PDF unchanged ===")
+    pdf_res = pdf_text(admin, f"/players/{ids['resident']}/passport.pdf")
+    chk("P13a PDF keeps existing 'Eligible from' wording", "Eligible from" in pdf_res)
+    chk("P13b PDF NOT a passport holder", "Passport holder" not in pdf_res)
+
+    print("\n=== P14: profile/PDF origin consistency ===")
+    prof_pend = prof(ids['ph_pend'])
+    chk("P14 same origin (Brazil) on BOTH profile and PDF",
+        ("Brazil" in prof_pend) and ("Brazil" in pdf_pend))
 
 finally:
     print("\n(cleanup)")

@@ -1,5 +1,51 @@
 # Changelog
 
+## v1.7.2 — Origin country + passport-holder + countdown in the PDF passport (2026-06-24)
+
+Surfaces the passport-holder info (origin country, "Passport holder", NT
+eligibility countdown) in the **PDF passport export**, matching the player
+profile. Pure-code, no schema change.
+
+### Root-cause finding (profile vs PDF)
+- **Profile was NOT broken.** End-to-end check on current HEAD: the profile
+  route SELECT already includes `origin_country`/`origin_country_code`
+  ([players/__init__.py](app/players/__init__.py)), the template renders the Origin line + 🛂
+  Passport holder + countdown, and a live E2E confirms it. The likely cause of
+  the "not showing" report was either a player with origin set but
+  `nationality_status` ≠ `bahraini` (by-definition not a passport holder → no
+  display), or the **PDF** view (which genuinely omitted it) being read as "the
+  profile". Locked the profile path with an edit-form round-trip E2E.
+- **The PDF was broken**, two gaps: (1) its data query
+  ([passport/data.py](app/passport/data.py)) didn't SELECT the origin columns; (2) it uses its
+  own `_build_passport_eligibility`, whose `bahraini` branch short-circuited to
+  "Eligible now / Bahraini citizen" **before** any origin/residency check — so
+  a passport holder showed as a plain citizen with no countdown.
+
+### What landed (PDF)
+- Passport SELECT now pulls `origin_country` + `origin_country_code`; the data
+  layer adds an `origin_label` + inline `origin_flag_svg` (profile parity).
+- `_build_passport_eligibility`: for `bahraini + origin_country`, **delegates to
+  `compute_eligibility_status`** (the profile's source of truth) and maps its
+  keys → the passport card shape. Reuses the exact label/countdown (`Eligible
+  in Xy Ym` / `Eligible now`) + the "Passport holder · origin <X>" note — **no
+  new date math**. Born citizens (bahraini, no origin) and foreign-residency
+  branches unchanged.
+- Passport template ([passport.html](app/templates/passport/passport.html)) renders an Origin row
+  (label + flag + "Passport holder" tag) next to Nationality, gated on
+  bahraini + origin. The eligibility card already surfaces the countdown.
+
+### Verification
+- `migrations/_e2e_passport_holders.py` extended to **37/37** (was 26): added
+  PDF cases via **real-HTTP GET of `/players/<id>/passport.pdf` + pypdf text
+  extraction** — holder pending → PDF has Brazil + "Passport holder" + "Eligible
+  in 0y 6m" + Bahrain; holder 5y-done → eligible now; born citizen → "Eligible
+  now / Bahraini citizen", NO passport line; foreign resident → unchanged
+  ("Eligible from"); and a profile↔PDF origin-consistency check.
+- Regression: eligibility-badge 13/0, residents-countdown 5/0, nt-residents
+  17/0, v1.0.2 pass. **phase_6_1 = 52 pass / 3 fail — the 3 fails
+  (flag-inline / inline-svg / timing-log) are PRE-EXISTING**, proven via
+  git-stash (identical 52/3 on clean code); my changes add ZERO new failures.
+
 ## v1.7.1 — Fix: origin_country blank on edit-form reload (2026-06-24)
 
 **It was a READ bug, not a write bug.** The origin value saved correctly

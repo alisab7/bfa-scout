@@ -149,6 +149,12 @@ h4 {
   font-weight: 600;
   font-size: 10.5pt;
 }
+/* Passport holder (naturalized Bahraini) tag next to the origin country. */
+.passport-holder-tag {
+  font-weight: 600;
+  font-size: 9pt;
+  color: #1F7A4D;
+}
 
 /* Phase 6.1: inline SVG flag next to nationality label. Sized in pt so
    the layout doesn't change at print scale. Aspect ratio 4:3 (matches

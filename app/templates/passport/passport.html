@@ -87,6 +87,19 @@
             {% endif %}
           </span>
         </div>
+        {# Passport holder (naturalized Bahraini): origin country — matches the
+           player profile. Defined by bahraini + origin_country set. #}
+        {% if player.nationality_status == 'bahraini' and player.origin_country %}
+          <div><span class="bio-k">Origin</span>
+            <span class="bio-v">
+              {{ player.origin_label or player.origin_country }}
+              {% if player.origin_flag_svg %}
+                <span class="flag-inline">{{ player.origin_flag_svg | safe }}</span>
+              {% endif %}
+              <span class="passport-holder-tag">· Passport holder</span>
+            </span>
+          </div>
+        {% endif %}
         {% if player.height_cm or player.weight_kg %}
           <div><span class="bio-k">Build</span>
             <span class="bio-v">
