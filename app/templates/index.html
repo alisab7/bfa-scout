@@ -8,10 +8,13 @@
   {# ── Anonymous landing ─────────────────────────────────────────── #}
   <div class="flex flex-col items-center justify-center min-h-[80vh] px-4 py-12">
 
-    <!-- BFA crest placeholder -->
-    <div class="bfa-crest-placeholder">
-      <span style="color:var(--brand);font-weight:700;">BFA</span>
-    </div>
+    <!-- BFA logo -->
+    <img src="{{ url_for('static', filename='img/bfa-logo.png') }}"
+         alt="Bahrain Football Association"
+         class="mb-6"
+         style="height:96px;width:auto;"
+         onerror="this.style.display='none';">
+
 
     <!-- Hero -->
     <div class="text-center max-w-md mx-auto md:max-w-2xl">
@@ -62,6 +65,11 @@
 
     <!-- Welcome -->
     <div class="mb-8">
+      <img src="{{ url_for('static', filename='img/bfa-logo.png') }}"
+           alt="Bahrain Football Association"
+           class="mb-4"
+           style="height:80px;width:auto;"
+           onerror="this.style.display='none';">
       <h1 class="text-2xl md:text-3xl font-bold mb-1" style="color:var(--text);">
         Welcome back, {{ current_user.full_name }}
       </h1>

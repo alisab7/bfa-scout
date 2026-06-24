@@ -1,5 +1,28 @@
 # Changelog
 
+## v1.6.2 — BFA logo on the home/landing page (2026-06-24)
+
+Completes the logo rollout (nav / login / favicon landed in commit
+`1dd8ecd`). The home page at `/` now shows the BFA logo instead of the
+placeholder triangle. Template-only; no schema, no migration.
+
+### What landed
+- **[index.html](app/templates/index.html)** — replaced the `△`/"BFA"-text crest:
+  - Authenticated dashboard (post-login "Welcome back" page): BFA logo
+    (80px) added above the welcome header.
+  - Anonymous landing hero: the `.bfa-crest-placeholder` swapped for the
+    BFA logo (96px).
+  - Both reuse the established pattern:
+    `url_for('static', filename='img/bfa-logo.png')` + `onerror` hide
+    fallback (same as nav/login). Functional quick-action card icons are
+    left as-is (they're glyphs, not the logo).
+
+### Verification
+- Post-login `/` (real HTTP, logged in) renders the hero logo + nav logo +
+  favicons; logo still serves `200 image/png`; the old text crest is gone.
+- Regression: v1.0.2 audit pass, nt-residents 17/0, residents-countdown
+  5/0, youth functional 28/0.
+
 ## v1.6.1 — Residents table: eligibility countdown on pending players (2026-06-24)
 
 `/nt/residents` "Still Counting" rows now show the **"Eligible in Xy Ym"**
