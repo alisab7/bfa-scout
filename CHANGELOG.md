@@ -1,5 +1,56 @@
 # Changelog
 
+## v1.7.0 — Passport holders (Bahraini + origin country) (2026-06-24)
+
+Naturalized players are framed as **Bahraini** with their original country
+kept as **origin**, plus a "Passport holder" note. NT eligibility still runs
+the **5-year residency clock** (eligible now, or counting down).
+
+### The model (no boolean flag)
+A passport holder is DEFINED by `nationality_status = 'bahraini'` **AND**
+`origin_country` set. No `passport_holder` flag — presence of an origin
+country on a Bahraini player makes them one.
+
+### What landed
+- **Schema** — `players.origin_country VARCHAR(64)` (real queryable data for
+  origin-based analysis) + `origin_country_code CHAR(3)` (flag, mirrors
+  `nationality_code`) + a partial index. Idempotent migration
+  `migrations/passport_holders.sql` (`ADD COLUMN IF NOT EXISTS`, no invalid
+  `ADD CONSTRAINT IF NOT EXISTS`); mirrored into `schema.sql`.
+- **Eligibility** ([eligibility.py](app/players/eligibility.py)) —
+  `compute_eligibility_status`: `bahraini + origin_country` now runs the
+  **same** residency countdown as residents (reuses `_resolve_eligibility_date`
+  + `humanize_time_until`, no new math) → "Eligible now" or "Eligible in
+  Xy Ym", `is_passport_holder=True`, status_code eligible_now/eligible_future.
+  `bahraini` with no origin → unchanged "Citizen". foreign_residency /
+  ancestry / etc. → unchanged.
+- **Profile** ([profile.html](app/templates/players/profile.html)) — passport holders show
+  nationality **Bahraini** (+ flag), an **Origin: <country>** field (+ flag),
+  and a **🛂 Passport holder** note, plus the eligibility countdown. **Origin
+  is PROFILE-ONLY — never on the players list** (the list query never selects
+  it).
+- **Residents/eligibility view** ([nt/helpers.py](app/nt/helpers.py)) — filter widened to
+  `foreign_residency OR (bahraini AND origin_country IS NOT NULL)`; passport
+  holders appear with a "🛂 Passport holder · Origin: X" label and the same
+  eligible-now/still-counting split + countdown.
+- **Edit form** ([edit.html](app/templates/players/edit.html)) — admin/TD "Origin country"
+  picker in the eligibility fieldset; the route stores the code + canonical
+  name (`NATIONALITY_LABEL`), explicit `conn.commit()`. Settable on create too.
+
+### Verification
+- New `migrations/_e2e_passport_holders.py` — **23/23**: holder pending →
+  Bahraini + Origin + "Passport holder" + "Eligible in 0y 6m"; holder 5y-done
+  → eligible now; born citizen → "Citizen" unchanged; foreign resident →
+  unchanged (foreign nationality, countdown, NOT relabeled); origin on profile
+  but NOT the list; residents-view label + countdown matches the profile;
+  filter returns exactly the bahraini+origin players; origin_country queryable;
+  edit-form persists.
+- Regression: residents-countdown 5/0, nt-residents 17/0, eligibility-badge
+  13/0, 5c2.1 48/0, scout-nt-eval 20/0, /nt 11/0, phase_7 29/0, youth 28/0 +
+  24/0, eval-position 13/0, assign-positions 12/0, youth-shortlist 24/0,
+  bulk-import 40/0, Phase 9 46/0, v1.0.2 pass. Born-citizen + foreign-residency
+  unchanged.
+
 ## v1.6.2 — BFA logo on the home/landing page (2026-06-24)
 
 Completes the logo rollout (nav / login / favicon landed in commit

@@ -225,6 +225,30 @@
             {% endif %}
           </div>
 
+          {# ── Passport holder: origin country ──────────────────────────
+             Set this on a BAHRAINI player to mark them a naturalized
+             passport holder. Their NT eligibility then runs the same
+             5-year residency clock (set the residency-start date below). #}
+          <div>
+            <label class="block text-sm font-medium mb-1" style="color:var(--text-muted);">
+              Origin country <span class="font-normal" style="color:var(--text-muted);">(passport holders only)</span>
+            </label>
+            {% set selected_origin = form.get('origin_country_code', player.origin_country_code or '') %}
+            <select name="origin_country_code" class="w-full">
+              <option value="">— None (born citizen) —</option>
+              {% for code, label in NATIONALITY_CHOICES %}
+                <option value="{{ code }}" {% if selected_origin == code %}selected{% endif %}>{{ label }} ({{ code }})</option>
+              {% endfor %}
+            </select>
+            <p class="text-xs mt-1" style="color:var(--text-muted);">
+              Bahraini + origin country = passport holder (Bahraini, origin kept,
+              5-year residency countdown). Leave empty for a born citizen.
+            </p>
+            {% if errors.origin_country_code %}
+              <p class="text-xs mt-1" style="color:var(--brand);">{{ errors.origin_country_code }}</p>
+            {% endif %}
+          </div>
+
           {# ── Bahrain residency tracking + suggested-date UX (Phase 5c-2) ── #}
           <div>
             <label class="block text-sm font-medium mb-1" style="color:var(--text-muted);">

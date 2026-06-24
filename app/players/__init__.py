@@ -265,6 +265,15 @@ def new_player():
         nationality_status      = (request.form.get('nationality_status') or '').strip() or None
         eligible_from_date_str  = (request.form.get('eligible_from_date') or '').strip()
         eligibility_notes_admin = (request.form.get('eligibility_notes_admin') or '').strip() or None
+        # Passport holder: origin country (ISO alpha-3 picker → store code +
+        # the canonical name, so it's queryable with the same vocabulary as
+        # nationality). Setting it on a bahraini player makes them a passport
+        # holder; clearing it reverts to born-citizen.
+        origin_country_code = (request.form.get('origin_country_code') or '').strip().upper() or None
+        if origin_country_code and origin_country_code not in NATIONALITY_LABEL:
+            errors['origin_country_code'] = 'Invalid origin country.'
+            origin_country_code = None
+        origin_country = NATIONALITY_LABEL.get(origin_country_code) if origin_country_code else None
         if nationality_status and nationality_status not in _NS_VALUES:
             errors['nationality_status'] = 'Invalid eligibility status.'
         eligible_from_date = None
@@ -338,10 +347,12 @@ def new_player():
                              nationality_status, eligible_from_date,
                              eligibility_notes_admin,
                              bahrain_residency_start_date, bahrain_residency_notes,
+                             origin_country, origin_country_code,
                              is_active, created_by)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                                 %s, %s,
                                 %s, %s, %s, %s, %s,
+                                %s, %s,
                                 TRUE, %s)
                         RETURNING id
                         """,
@@ -351,6 +362,7 @@ def new_player():
                          nationality_code, club_id,
                          nationality_status, eligible_from_date, eligibility_notes_admin,
                          bahrain_residency_start_date, bahrain_residency_notes,
+                         origin_country, origin_country_code,
                          current_user.id)
                     )
                 else:
@@ -417,6 +429,8 @@ def player_profile(player_id):
                    pl.bahrain_residency_start_date, pl.bahrain_residency_notes,
                    -- Phase 5c-3 structured nationality + club
                    pl.nationality_code, pl.club_id,
+                   -- Passport holders (profile-only): origin country
+                   pl.origin_country, pl.origin_country_code,
                    p.code AS position_code, p.name AS position_name,
                    pg.code AS group_code,   pg.name_en AS group_name,
                    c.name AS club_name,     c.division AS club_division
@@ -554,6 +568,15 @@ def edit_player(player_id):
         nationality_status      = (request.form.get('nationality_status') or '').strip() or None
         eligible_from_date_str  = (request.form.get('eligible_from_date') or '').strip()
         eligibility_notes_admin = (request.form.get('eligibility_notes_admin') or '').strip() or None
+        # Passport holder: origin country (ISO alpha-3 picker → store code +
+        # the canonical name, so it's queryable with the same vocabulary as
+        # nationality). Setting it on a bahraini player makes them a passport
+        # holder; clearing it reverts to born-citizen.
+        origin_country_code = (request.form.get('origin_country_code') or '').strip().upper() or None
+        if origin_country_code and origin_country_code not in NATIONALITY_LABEL:
+            errors['origin_country_code'] = 'Invalid origin country.'
+            origin_country_code = None
+        origin_country = NATIONALITY_LABEL.get(origin_country_code) if origin_country_code else None
         if nationality_status and nationality_status not in _NS_VALUES:
             errors['nationality_status'] = 'Invalid eligibility status.'
         eligible_from_date = None
@@ -682,6 +705,7 @@ def edit_player(player_id):
                                bahrain_residency_start_date = %s,
                                bahrain_residency_notes = %s,
                                nationality_code = %s, club_id = %s,
+                               origin_country = %s, origin_country_code = %s,
                                age_group = %s,
                                updated_at = NOW()
                         WHERE  id = %s
@@ -692,6 +716,7 @@ def edit_player(player_id):
                          nationality_status, eligible_from_date, eligibility_notes_admin,
                          bahrain_residency_start_date, bahrain_residency_notes,
                          nationality_code, club_id,
+                         origin_country, origin_country_code,
                          new_age_group,
                          player_id)
                     )

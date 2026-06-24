@@ -43,10 +43,33 @@
 | **Admin bulk position-assign screen** | **✅ Complete** | `/admin/assign-positions` (admin+TD) lists active position-less players + grouped picker; bulk-sets `primary_position_id` so imported players become evaluatable. Evaluate guard unchanged. 12/12 E2E. v1.4.1 |
 | **Youth shortlist (tracked prospects)** | **✅ Complete** | `youth_shortlist` table; add/remove + note from player profile; `/youth/shortlist` tab (admin/TD/nt_staff). Add youth-only; kept after promotion (manual remove). 19/19 E2E. v1.5.0 |
 | **Scout access: hide NT evals + residents view** | **✅ Complete** | Audit confirmed NT-staff evals already invisible to scouts on every surface (404 not 403 on direct URL); shipped a security E2E to lock it. Split residents decorator so scouts get `/nt/residents` only (senior `/nt` stays closed). 20/20 E2E. v1.6.0 |
+| **Passport holders (Bahraini + origin)** | **✅ Complete** | `origin_country` (+code) columns; bahraini+origin = passport holder (no flag); reuses the residency 5y countdown; Bahraini + Origin + "Passport holder" on profile (profile-only); shown/filterable on residents view; queryable for analysis. 23/23 E2E. v1.7.0 |
 | Phase 8.2: Auth hardening v2 | Queued (v1.1) | CSRF token review, password reset email, 2FA/MFA |
 | Phase 10: AI features | Queued (post-v1) | Gemini integration |
 
 ## Current phase
+
+**Passport holders (Bahraini + origin country) — complete. v1.7.0.**
+
+Naturalized players are Bahraini with their original country kept as
+**origin** + a "Passport holder" note; NT eligibility still runs the 5-year
+residency clock. A passport holder is DEFINED by `nationality_status='bahraini'
+AND origin_country` set — **no boolean flag**. New columns
+`players.origin_country` (queryable, for origin-based analysis) +
+`origin_country_code` (flag). `compute_eligibility_status` reuses the exact
+residency countdown (`_resolve_eligibility_date` + `humanize_time_until`) for
+holders — only the label changes; born-citizen and foreign-residency are
+untouched. Origin shows on the **profile only** (never the players list);
+passport holders also appear, labelled + with countdown, on `/nt/residents`,
+and are filterable (`bahraini + origin_country IS NOT NULL`). Admin/TD set the
+origin country on the edit form. `_e2e_passport_holders.py` 23/23; full
+regression green.
+
+**Deploy note (Ali): schema change.** Back up, run
+`migrations/passport_holders.sql` (adds the two columns + index) BEFORE the
+app restart, then build + restart.
+
+---
 
 **Scout access: hide NT-staff evaluations + grant residents view — complete. v1.6.0.**
 

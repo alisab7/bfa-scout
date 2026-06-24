@@ -123,6 +123,7 @@ def get_resident_players() -> tuple[list[dict], list[dict]]:
                    pl.dob, pl.current_club, pl.nationality_code,
                    pl.nationality_status, pl.eligible_from_date,
                    pl.bahrain_residency_start_date,
+                   pl.origin_country, pl.origin_country_code,
                    p.code  AS position_code, p.name AS position_name,
                    pg.code AS position_group_code,
                    pg.name_en AS position_group_name,
@@ -132,7 +133,15 @@ def get_resident_players() -> tuple[list[dict], list[dict]]:
             LEFT JOIN position_groups pg ON pg.id = p.position_group_id
             LEFT JOIN clubs c            ON c.id  = pl.club_id
             WHERE  pl.is_active = TRUE
-              AND  pl.nationality_status = 'foreign_residency'
+              -- The naturalization-pathway view = foreign residents PLUS
+              -- passport holders (naturalized Bahrainis with an origin
+              -- country). Both run the 5-year residency clock; the board
+              -- cares about each one's NT-eligibility countdown.
+              AND  (
+                    pl.nationality_status = 'foreign_residency'
+                 OR (pl.nationality_status = 'bahraini'
+                     AND pl.origin_country IS NOT NULL)
+              )
             ORDER  BY pl.full_name
             """
         )
@@ -144,6 +153,9 @@ def get_resident_players() -> tuple[list[dict], list[dict]]:
     for p in rows:
         eff = _effective_eligibility_date(p)
         p["eligible_from_effective"] = eff
+        # Passport holder flag for the template (Bahraini + origin country).
+        p["is_passport_holder"] = (p.get("nationality_status") == "bahraini"
+                                   and bool(p.get("origin_country")))
         # Countdown ("Eligible in Xy Ym") — the SAME string the player
         # profile shows, via the shared helper. None for eligible-now /
         # no-date players (so only future-dated pending rows render it).

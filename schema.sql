@@ -115,6 +115,12 @@ CREATE TABLE IF NOT EXISTS players (
     -- `current_club` is kept as a denormalised cache for non-Bahraini clubs
     -- (when club_id IS NULL).
     nationality_code       CHAR(3),
+    -- Passport holders (naturalized Bahrainis). A passport holder is
+    -- DEFINED by nationality_status='bahraini' AND origin_country set — no
+    -- boolean flag. origin_country is real queryable data (origin-based
+    -- analysis); origin_country_code is the ISO alpha-3 for the flag.
+    origin_country         VARCHAR(64),
+    origin_country_code    CHAR(3),
     club_id                INTEGER REFERENCES clubs(id) ON DELETE SET NULL,
     -- Youth NT: squad age-group. UPPERCASE values (distinct from
     -- matches.age_group which is lowercase and means the match level).
@@ -134,6 +140,7 @@ CREATE INDEX IF NOT EXISTS idx_players_position    ON players(primary_position_i
 CREATE INDEX IF NOT EXISTS idx_players_national_id ON players(national_id);
 CREATE INDEX IF NOT EXISTS idx_players_active      ON players(is_active);
 CREATE INDEX IF NOT EXISTS idx_players_nationality ON players(nationality_code);
+CREATE INDEX IF NOT EXISTS idx_players_origin_country ON players(origin_country) WHERE origin_country IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_players_club_id     ON players(club_id);
 CREATE INDEX IF NOT EXISTS idx_players_age_group   ON players(age_group);
 

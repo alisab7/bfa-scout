@@ -39,6 +39,13 @@
                   {{ p.full_name_ar }}
                 </span>
               {% endif %}
+              {% if p.is_passport_holder %}
+                <span class="block text-xs mt-0.5"
+                      style="color:var(--accent);"
+                      title="Naturalized Bahraini — passport holder">
+                  🛂 Passport holder · Origin: {{ p.origin_country }}
+                </span>
+              {% endif %}
             </td>
             <td class="px-4 py-3" style="color:var(--text);">
               {{ p.position_name or '—' }}

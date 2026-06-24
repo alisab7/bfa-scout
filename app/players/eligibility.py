@@ -179,12 +179,39 @@ def compute_eligibility_status(player) -> dict:
                 "is_eligible_now": False, "age_at_eligibility": None,
                 "status_code": "not_eligible"}
 
-    # Priority 2: birthright eligibility — eligible regardless of date.
-    # These are CITIZENS, not residency players who completed the 5-year
-    # clock, so the badge reads "Citizen" — NOT "Eligible now" (which is
-    # reserved for foreign_residency past their eligible date). They are
-    # still is_eligible_now=True (eligible to play) — only the LABEL differs.
+    # Priority 2: bahraini.
     if nat == "bahraini":
+        origin = get("origin_country")
+        if origin:
+            # PASSPORT HOLDER (naturalized): Bahraini by passport, original
+            # country kept as origin. NT eligibility runs the SAME 5-year
+            # residency clock as foreign_residency — reuse the exact date
+            # logic (`_resolve_eligibility_date`) + countdown
+            # (`humanize_time_until`); only the LABEL changes. No new math.
+            today = date.today()
+            target = _resolve_eligibility_date(get)
+            note_base = f"Passport holder · origin {origin}"
+            if target is None:
+                return {"icon": "⏳",
+                        "label": "Pending — residency start not set",
+                        "note": note_base + " — set Bahrain residency start date",
+                        "is_eligible_now": False, "age_at_eligibility": None,
+                        "status_code": "unknown",
+                        "is_passport_holder": True, "origin_country": origin}
+            if target <= today:
+                return {"icon": "✅", "label": "Eligible now",
+                        "note": note_base + " · 5-year residency complete",
+                        "is_eligible_now": True, "age_at_eligibility": None,
+                        "status_code": "eligible_now",
+                        "is_passport_holder": True, "origin_country": origin}
+            return {"icon": "⏳", "label": humanize_time_until(target),
+                    "note": note_base + f" · eligible {target.strftime('%Y-%m-%d')}",
+                    "is_eligible_now": False, "age_at_eligibility": _age_at_elig,
+                    "status_code": "eligible_future",
+                    "is_passport_holder": True, "origin_country": origin}
+        # Born citizen (no origin) — birthright, eligible regardless of date.
+        # Badge reads "Citizen" (NOT "Eligible now", reserved for residency
+        # players past their date). is_eligible_now=True; only LABEL differs.
         return {"icon": "✅", "label": "Citizen",
                 "note": "Bahraini citizen · مواطن",
                 "is_eligible_now": True, "age_at_eligibility": None,
