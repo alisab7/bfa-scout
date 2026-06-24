@@ -8,6 +8,8 @@
   <!-- PWA -->
   <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
   <meta name="theme-color" content="#C8102E">
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/bfa-logo.png') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/bfa-logo.png') }}">
 
   <!-- Cairo font -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -60,7 +62,10 @@
       <!-- Left: BFA logo / wordmark -->
       <a href="{{ url_for('index') }}" class="flex items-center gap-2 font-bold text-lg no-underline"
          style="color:var(--text);">
-        <span style="color:var(--brand);">&#9651;</span>
+        <img src="{{ url_for('static', filename='img/bfa-logo.png') }}"
+             alt="BFA"
+             style="height:32px;width:auto;display:block;"
+             onerror="this.style.display='none';">
         <span>BFA Scout</span>
       </a>
 
