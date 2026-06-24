@@ -208,6 +208,32 @@ try:
     p9 = prof(ids['citizen'])
     chk("P9c former citizen now shows 'Passport holder'", "Passport holder" in p9)
 
+    # P9d (the reported bug): the EDIT FORM must PRE-SELECT the saved origin on
+    # reload — not just persist to the DB. Catches the blank-on-reload read bug.
+    edit_html = http(admin, "GET", f"/players/{ids['citizen']}/edit")[1]
+    chk("P9d edit form pre-selects origin BRA on reload",
+        bool(re.search(r'<option value="BRA"[^>]*\bselected\b', edit_html)),
+        "looking for selected BRA option")
+
+    # P9e clearing origin → reverts to plain citizen (origin NULL).
+    tok = csrf_of(http(admin, "GET", f"/players/{ids['citizen']}/edit")[1])
+    http(admin, "POST", f"/players/{ids['citizen']}/edit",
+         data={"csrf_token": tok, "full_name": CITIZEN,
+               "national_id": f"PPH{abs(hash(CITIZEN))%1000000}",
+               "nationality_status": "bahraini",
+               "origin_country_code": "",  # cleared
+               "bahrain_residency_start_date": R_6MO})
+    with db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT origin_country, origin_country_code FROM players WHERE id=%s",
+                    (ids['citizen'],))
+        rc = cur.fetchone()
+    chk("P9e clearing origin reverts to NULL (plain citizen)",
+        rc['origin_country'] is None and rc['origin_country_code'] is None,
+        f"got {rc}")
+    p9e = prof(ids['citizen'])
+    chk("P9f cleared player is plain 'Citizen' again (no passport-holder)",
+        "Citizen" in p9e and "Passport holder" not in p9e)
+
 finally:
     print("\n(cleanup)")
     cleanup()

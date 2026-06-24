@@ -1,5 +1,28 @@
 # Changelog
 
+## v1.7.1 — Fix: origin_country blank on edit-form reload (2026-06-24)
+
+**It was a READ bug, not a write bug.** The origin value saved correctly
+(UPDATE/INSERT had the columns, the profile + residents view showed it, and
+the DB stored both `origin_country` + `origin_country_code`) — but the player
+**edit route's load query** ([players/__init__.py](app/players/__init__.py)) didn't SELECT the two
+origin columns, so the edit form's `<select>` had nothing to pre-select and
+read blank on reload. Looked like "not persisting."
+
+### Fix
+- Added `pl.origin_country, pl.origin_country_code` to the `edit_player`
+  player-load SELECT. One line; no write/derivation/commit change (those were
+  already correct). No schema change.
+
+### Verification
+- `migrations/_e2e_passport_holders.py` extended → **26/26**, incl. the
+  previously-missing round-trip: after saving an origin, **GET the edit page
+  and assert the dropdown pre-selects `<option value="BRA" … selected>`**
+  (this would have failed before the fix), plus clearing origin → reverts to
+  NULL / plain "Citizen".
+- Regression: eligibility-badge 13/0, residents-countdown 5/0, nt-residents
+  17/0, 5c2.1 48/0, v1.0.2 audit pass.
+
 ## v1.7.0 — Passport holders (Bahraini + origin country) (2026-06-24)
 
 Naturalized players are framed as **Bahraini** with their original country

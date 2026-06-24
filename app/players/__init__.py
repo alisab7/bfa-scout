@@ -478,7 +478,11 @@ def edit_player(player_id):
                    pl.age_group,
                    pl.nationality_status, pl.eligible_from_date, pl.eligibility_notes_admin,
                    pl.bahrain_residency_start_date, pl.bahrain_residency_notes,
-                   pl.nationality_code, pl.club_id
+                   pl.nationality_code, pl.club_id,
+                   -- Passport holders: needed so the edit form pre-selects the
+                   -- origin-country dropdown on reload (write was fine; this
+                   -- read column was the blank-on-reload bug).
+                   pl.origin_country, pl.origin_country_code
             FROM   players pl
             WHERE  pl.id = %s AND pl.is_active = TRUE
             """,
