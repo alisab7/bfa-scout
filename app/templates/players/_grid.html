@@ -31,9 +31,11 @@
           <div class="text-xs mt-1 truncate" style="color:var(--text-muted);">{{ p.current_club }}</div>
         {% endif %}
 
-        {# Phase 6.2.3: eligibility badge — flag + colored status #}
+        {# Phase 6.2.3: eligibility badge — flag + colored status.
+           show_note=False: keep origin (carried in the note for passport
+           holders) off the list — it's profile/PDF-only. Countdown still shows. #}
         <div class="mt-2">
-          {{ eligibility_badge(p) }}
+          {{ eligibility_badge(p, show_note=False) }}
         </div>
       </div>
     </a>

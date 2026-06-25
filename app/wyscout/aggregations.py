@@ -446,6 +446,10 @@ def compare_players(player_ids: list[int]) -> dict:
                        pl.nationality_status,
                        pl.eligible_from_date,
                        pl.bahrain_residency_start_date,
+                       -- origin_country: the eligibility_badge macro on the
+                       -- comparison cards feeds this to compute_eligibility_status
+                       -- (same passport-holder fix as the players list).
+                       pl.origin_country,
                        p.code   AS position_code,
                        p.name   AS position_name,
                        pg.id    AS position_group_id,
@@ -491,6 +495,9 @@ def compare_players(player_ids: list[int]) -> dict:
             "nationality_status":          r["nationality_status"],
             "eligible_from_date":          r["eligible_from_date"],
             "bahrain_residency_start_date": r["bahrain_residency_start_date"],
+            # Passport holders: origin drives the countdown vs "Citizen" in
+            # compute_eligibility_status (badge on the comparison cards).
+            "origin_country":              r["origin_country"],
             "position_code":               r["position_code"],
             "position_name":               r["position_name"],
             "position_group_id":           r["position_group_id"],   # Phase 5d: criteria union

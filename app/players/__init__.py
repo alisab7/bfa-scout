@@ -139,6 +139,11 @@ def _search_players(q, pos_id, elig=None, nat=None, club=None):
                    pl.nationality_status, pl.eligible_from_date,
                    pl.bahrain_residency_start_date,
                    pl.nationality_code, pl.club_id,
+                   -- origin_country: the eligibility_badge macro feeds this row
+                   -- to compute_eligibility_status; without it a passport holder
+                   -- (bahraini + origin) is mis-rendered as "Citizen" instead of
+                   -- the residency countdown.
+                   pl.origin_country,
                    p.code AS position_code, p.name AS position_name,
                    pg.code AS group_code,   pg.name_en AS group_name,
                    c.name AS club_name,     c.division AS club_division

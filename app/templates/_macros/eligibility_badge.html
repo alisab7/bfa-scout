@@ -20,10 +20,14 @@
     {{ eligibility_badge(player) }}
     {{ eligibility_badge(player, show_flag=False, size='md') }}
 #}
-{% macro eligibility_badge(player, show_flag=True, size='sm') %}
+{% macro eligibility_badge(player, show_flag=True, size='sm', show_note=True) %}
   {%- set elig = compute_eligibility_status(player) -%}
+  {# show_note=False on glanceable list/compare surfaces: the note can carry
+     origin context ("Origin: Brazil …") for passport holders, and origin is
+     PROFILE/PDF-only — never the list. The visible countdown label is shown
+     regardless. #}
   <span class="elig-badge elig-badge-{{ size }}" data-status="{{ elig.status_code }}"
-        title="{{ elig.label }}{% if elig.note %} · {{ elig.note }}{% endif %}">
+        title="{{ elig.label }}{% if show_note and elig.note %} · {{ elig.note }}{% endif %}">
     {%- if show_flag and player.nationality_code -%}
       {%- set flag = get_flag_svg(player.nationality_code) -%}
       {%- if flag -%}

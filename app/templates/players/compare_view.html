@@ -44,8 +44,9 @@
           <p class="text-xs mt-1 truncate" style="color:var(--text-muted);">
             {{ p.current_club or '—' }} &middot; Age {{ p.age if p.age is not none else '—' }}
           </p>
-          {# Phase 6.2.3: eligibility badge with nationality flag #}
-          <div class="mt-2">{{ eligibility_badge(p) }}</div>
+          {# Phase 6.2.3: eligibility badge with nationality flag.
+             show_note=False — origin stays off compare cards (profile/PDF-only). #}
+          <div class="mt-2">{{ eligibility_badge(p, show_note=False) }}</div>
         </div>
       </div>
     {% endfor %}

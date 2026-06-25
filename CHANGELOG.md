@@ -1,5 +1,52 @@
 # Changelog
 
+## v1.8.1 — Fix: players-list card badge shows countdown for bahraini+origin (2026-06-25)
+
+Naturalized players (bahraini + `origin_country`, e.g. Juninho, Soufian
+Mahrouq, Vinícius Vargas) wrongly showed the **"Citizen"** badge on the
+players-list cards instead of their **"Eligible in Xy Ym"** residency countdown
+— while the identical foreign-resident case (Elliot Simões) showed the
+countdown correctly. Same class as the earlier origin read-bug. Pure-code, no
+schema change.
+
+### Root cause (the macro was fine — the query starved it)
+The `eligibility_badge` macro already routes through `compute_eligibility_status`
+(the source of truth). But that function reads `player["origin_country"]`, and
+the **list query didn't SELECT it** — so origin was absent → treated as a born
+citizen → "Citizen". The filter worked because it queries `origin_country`
+directly in its WHERE clause; only the display query was starved.
+
+### Fix the class — both queries feeding the badge macro
+- `_search_players` ([players/__init__.py](app/players/__init__.py)) — players-list grid: added
+  `pl.origin_country` to the SELECT.
+- `compare_players` ([wyscout/aggregations.py](app/wyscout/aggregations.py)) — comparison cards
+  (same latent bug): added `pl.origin_country` to the SELECT **and** to the
+  rebuilt per-player dict (the function copies named fields, so the SELECT alone
+  wasn't enough).
+- The macro and `compute_eligibility_status` were already correct, so all
+  surfaces now agree. Born-citizen → "Citizen" and foreign-resident → countdown
+  unchanged. (Reported-but-unchanged: the `/nt` squad and eval-readiness
+  hardcoded "Bahraini citizen" labels are separate, non-countdown surfaces and
+  accurate in their context.)
+- **Kept origin OFF the list:** feeding `origin_country` makes the badge's note
+  (tooltip) carry "Origin: …" for passport holders. Since origin is
+  profile/PDF-only, the badge macro gained a `show_note` param and the list +
+  compare cards pass `show_note=False` — the visible countdown shows, but the
+  origin note never reaches those surfaces (the `title` tooltip there is just
+  the countdown label).
+
+### Verification
+- New `migrations/_e2e_list_badge_passport.py` — **14/14** (real HTTP, every
+  category on rendered list HTML): bahraini+origin under-5y → "Eligible in 0y
+  6m" (NOT "Citizen"); bahraini+origin past-5y → "Eligible now"; born citizen →
+  "Citizen"; foreign resident → countdown; card == profile; the Pending filter
+  still includes the passport holders; and the comparison view now shows the
+  countdown too.
+- Regression: passport-holders 47/0, eligibility-badge 13/0, residents-countdown
+  5/0, nt-residents 17/0, 5c2.1 48/0, v1.0.2 pass.
+- `migrations/find_passport_holders_prod.sql` — read-only SELECT for Ali to list
+  every prod passport holder + their expected badge, to confirm the fix visually.
+
 ## v1.8.0 — Admin: bulk club-assignment screen (2026-06-25)
 
 New admin screen **`/admin/assign-clubs`** to give imported players a club.
