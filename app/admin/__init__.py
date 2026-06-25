@@ -9,6 +9,7 @@ from . import bulk_import  # noqa: E402,F401 — Phase 9: registers /admin/playe
 from . import registry_import  # noqa: E402,F401 — registers /admin/import/players/* routes
 from . import photo_import  # noqa: E402,F401 — registers /admin/import/photos/* routes
 from . import assign_positions  # noqa: E402,F401 — registers /admin/assign-positions routes
+from . import assign_clubs  # noqa: E402,F401 — registers /admin/assign-clubs routes
 
 
 @bp.route('/deleted-evaluations')

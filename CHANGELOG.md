@@ -1,5 +1,45 @@
 # Changelog
 
+## v1.8.0 — Admin: bulk club-assignment screen (2026-06-25)
+
+New admin screen **`/admin/assign-clubs`** to give imported players a club.
+Bulk-imported players arrive with `club_id` NULL; a player's club is the
+prerequisite for the upcoming match-reconciliation features (true "vs opponent"
+on the profile, league-matches filter) — "which match side is the player's?"
+is unanswerable without it. Pure code — no schema change (`club_id` /
+`current_club` already exist).
+
+### What landed
+- Route ([admin/assign_clubs.py](app/admin/assign_clubs.py)), mirroring `/admin/assign-positions`
+  (auth `admin_or_td_required`, structure, stale-form guard, `conn.commit()`,
+  audit log). GET lists active club-less players (`club_id IS NULL`) with photo,
+  name, position, squad, national ID. POST assigns the selected players to one
+  club.
+- **Bulk-select** UI ([assign_clubs.html](app/templates/admin/assign_clubs.html)): per-row
+  checkboxes + select-all + a club dropdown (optgrouped Premier/First) +
+  Assign. Workflow is club-by-club — tick a club's players, pick the club,
+  assign, repeat. (Differs from assign-positions' per-row dropdowns, by design.)
+- **Sets BOTH** `club_id` **and** `current_club` (= `clubs.name`) in one UPDATE
+  so the FK and its denormalised text cache stay consistent. Stale-form guard
+  (`AND is_active AND club_id IS NULL`) means a player already given a club
+  isn't overwritten.
+- Sidebar link added next to "Assign positions" ([list.html](app/templates/players/list.html),
+  admin+TD).
+
+### Verification
+- New `migrations/_e2e_assign_clubs.py` — **15/15** (real HTTP, round-trip):
+  lists club-less players (clubbed player excluded); assigns 2 players to club A
+  → DB shows `club_id` + `current_club` = A's name → reload drops them from the
+  list; a 3rd player assigns to a different club B; stale-form guard keeps an
+  already-clubbed player; a scout is denied (403).
+- Regression: assign-positions, passport-holders, eligibility-badge,
+  nt-residents, youth, bulk-import, Phase 9, v1.0.2 — green (see below).
+
+### Note
+This is the **prerequisite** only. The `club_aliases` table (mapping
+match-team strings → clubs) and the vs-opponent / league-filter features come
+in later sessions, once players have clubs.
+
 ## v1.7.6 — Player profile: Recent Matches collapsible (2026-06-25)
 
 The profile's **Recent Matches** card is now collapsible. Pure template change

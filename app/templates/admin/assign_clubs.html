@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block title %}Assign Clubs — BFA Scout{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-8">
+
+  <a href="{{ url_for('players.list_players') }}"
+     class="text-sm mb-4 inline-block" style="color:var(--text-muted);">&larr; Players</a>
+
+  <h1 class="text-2xl font-bold mb-2" style="color:var(--text);">Assign Clubs</h1>
+  <p class="text-sm mb-6" style="color:var(--text-muted);">
+    Active players with no club (typically bulk-imported). A player's club is
+    needed to link them to their matches. Work club-by-club: tick the players
+    who belong to one club, pick that club, and click <strong>Assign</strong>.
+    Repeat for the next club.
+  </p>
+
+  {% if players %}
+    <form method="POST" action="{{ url_for('admin.assign_clubs_save') }}"
+          x-data="{ club: '' }">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <!-- Toolbar: club picker + assign -->
+      <div class="flex flex-wrap items-center gap-3 mb-4">
+        <select name="club_id" x-model="club" required
+                class="px-3 py-2 rounded text-sm"
+                style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+          <option value="">— Choose a club —</option>
+          {% for division in ['premier', 'first'] %}
+            <optgroup label="{{ 'Premier League' if division == 'premier' else 'First Division' }}">
+              {% for c in clubs if c.division == division %}
+                <option value="{{ c.id }}">{{ c.name }}</option>
+              {% endfor %}
+            </optgroup>
+          {% endfor %}
+        </select>
+        <button type="submit" :disabled="!club"
+                class="px-5 py-2 rounded text-sm font-semibold text-white"
+                :style="club ? 'background:var(--brand);' : 'background:var(--border);cursor:not-allowed;'">
+          Assign selected to club
+        </button>
+        <span class="text-sm" style="color:var(--text-muted);">
+          {{ players|length }} player{{ '' if players|length == 1 else 's' }} without a club
+        </span>
+      </div>
+
+      <div class="rounded-xl overflow-hidden mb-4"
+           style="background:var(--surface);border:1px solid var(--border);">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr style="background:var(--bg);border-bottom:1px solid var(--border);">
+                <th class="px-4 py-3 text-left" style="color:var(--text-muted);">
+                  <input type="checkbox" title="Select all"
+                         @change="document.querySelectorAll('input.row-check').forEach(c => c.checked = $event.target.checked)">
+                </th>
+                <th class="px-4 py-3 text-left" style="color:var(--text-muted);">Player</th>
+                <th class="px-4 py-3 text-left" style="color:var(--text-muted);">Position</th>
+                <th class="px-4 py-3 text-left" style="color:var(--text-muted);">Squad</th>
+                <th class="px-4 py-3 text-left" style="color:var(--text-muted);">National ID</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in players %}
+                {% set pos = get_player_pos(p.primary_position_id) %}
+                <tr style="border-bottom:1px solid var(--border);">
+                  <td class="px-4 py-3">
+                    <input type="checkbox" class="row-check" name="player_ids" value="{{ p.id }}">
+                  </td>
+                  <td class="px-4 py-3" style="color:var(--text);">
+                    <div class="flex items-center gap-3">
+                      <img src="{{ get_player_photo(p.id) }}" alt=""
+                           class="w-9 h-9 rounded-full object-cover flex-shrink-0"
+                           style="border:1px solid var(--border);"
+                           onerror="this.src='{{ url_for('static', filename='photos/placeholder.svg') }}';">
+                      <span>
+                        <span class="font-semibold">{{ p.full_name }}</span>
+                        {% if p.full_name_ar %}
+                          <span class="text-xs ml-1" style="color:var(--text-muted);direction:rtl;">{{ p.full_name_ar }}</span>
+                        {% endif %}
+                      </span>
+                    </div>
+                  </td>
+                  <td class="px-4 py-3" style="color:var(--text-muted);">{{ pos[0] or '—' }}</td>
+                  <td class="px-4 py-3" style="color:var(--text-muted);">{{ p.age_group or '—' }}</td>
+                  <td class="px-4 py-3" style="color:var(--text-muted);">{{ p.national_id or '—' }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </form>
+  {% else %}
+    <div class="rounded-xl p-6"
+         style="background:var(--surface);border:1px solid var(--border);">
+      <p class="text-sm" style="color:var(--text-muted);">
+        🎉 Every active player has a club. Nothing to assign.
+      </p>
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}
