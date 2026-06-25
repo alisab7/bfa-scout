@@ -1,5 +1,45 @@
 # Changelog
 
+## v1.7.4 — Fix: still-counting passport holders wrongly shown "eligible now" (2026-06-25)
+
+A **code** bug (not data): the eligibility filters classified **every** Bahraini
+as eligible-now, including passport holders (bahraini + origin_country) whose
+5-year residency clock is **not yet complete** — so a still-counting holder
+(e.g. prod player 84) wrongly appeared under "Eligible now". `compute_
+eligibility_status` already handled this correctly; two SQL filters predated
+passport holders and disagreed with it.
+
+### Fixes (mirror compute_eligibility_status — passport holder = residency route)
+- `players/__init__.py` `_ELIG_FILTER_CLAUSES` (the `/players?elig=` list
+  filter): the birthright "always eligible now" branch now excludes passport
+  holders (`bahraini AND origin_country IS NULL` = born citizen only); passport
+  holders run the 5-year residency math like `foreign_residency` in BOTH the
+  `eligible_now` and `pending` buckets. Extracted a shared `_RESIDENCY_ROUTE`
+  predicate so the two clauses can't drift.
+- `nt/helpers.py` `get_eligible_squad_players` (the `/nt` senior "eligible NOW"
+  squad): same fix — a still-counting holder is no longer on the eligible
+  squad; they appear (with countdown) on `/nt/residents` until 5y completes.
+- Born-citizen and foreign-residency behaviour unchanged in both.
+
+### Data fix for the 3 mis-coded players (Ali runs the SQL on prod)
+- `migrations/fix_naturalized_passport_holders.sql`: a read-only candidate
+  query (foreign_residency players with a foreign nationality_code + NULL
+  origin) + a guarded, idempotent UPDATE template (set
+  `nationality_status='bahraini'`, `nationality_code='BHR'`, `origin_country`/
+  `origin_country_code`; keep `bahrain_residency_start_date`). Logic validated
+  transactionally on the dev DB's same-shaped rows, then rolled back. Once a row
+  is bahraini + origin, all surfaces (filter, profile, PDF, residents) are
+  already correct.
+
+### Verification
+- `migrations/_e2e_passport_holders.py`: **47/47** (was 40). New **P16** locks
+  the player-84 regression over real HTTP: still-counting holder NOT in
+  `/players?elig=eligible_now` but IS in `?elig=pending`; 5y-complete holder +
+  born citizen ARE eligible_now; foreign resident (counting) is pending. (Plus
+  an in-process check of `get_eligible_squad_players`.)
+- Regression: /nt senior-squad 11/0, nt-residents 17/0, eligibility-badge 13/0,
+  residents-countdown 5/0, 5c2.1 48/0, v1.0.2 pass.
+
 ## v1.7.3 — Drop "Passport holder" tag; BFA logo in the passport PDF (2026-06-25)
 
 Two display changes for naturalized Bahrainis. Pure template/code — no schema,

@@ -57,22 +57,38 @@ def _load_position_picker():
 # The SQL clauses keep INTERVAL '5 years' aligned with
 # RESIDENCY_YEARS_REQUIRED in app/players/eligibility.py — if you change
 # the constant there, mirror it here.
+#
+# Passport holders (nationality_status='bahraini' AND origin_country set) run
+# the SAME 5-year residency clock as foreign_residency — they are NOT
+# unconditionally eligible-now like born citizens. So everywhere the residency
+# math applies to 'foreign_residency', it must ALSO apply to passport holders,
+# and the birthright "always eligible now" branch must EXCLUDE them (gate
+# bahraini on origin_country IS NULL). This mirrors compute_eligibility_status
+# so the list filter and the eligibility badge never disagree (the player-84
+# bug: a still-counting passport holder wrongly appeared under 'eligible_now').
+_RESIDENCY_ROUTE = (
+    "(pl.nationality_status = 'foreign_residency' "
+    " OR (pl.nationality_status = 'bahraini' AND pl.origin_country IS NOT NULL))"
+)
 _ELIG_FILTER_CLAUSES = {
-    'eligible_now': """(
-        pl.nationality_status IN ('bahraini', 'foreign_ancestry')
+    'eligible_now': f"""(
+        -- Birthright: born citizen (bahraini, NO origin) or ancestry — always now
+        (pl.nationality_status = 'bahraini' AND pl.origin_country IS NULL)
+        OR pl.nationality_status = 'foreign_ancestry'
         OR (pl.eligible_from_date IS NOT NULL AND pl.eligible_from_date <= CURRENT_DATE)
-        OR (pl.nationality_status = 'foreign_residency'
+        -- Residency route (foreign_residency OR passport holder): 5y complete
+        OR ({_RESIDENCY_ROUTE}
             AND pl.bahrain_residency_start_date IS NOT NULL
             AND pl.eligible_from_date IS NULL
             AND pl.bahrain_residency_start_date + INTERVAL '5 years' <= CURRENT_DATE)
     )""",
-    'pending': """(
+    'pending': f"""(
         (pl.eligible_from_date IS NOT NULL AND pl.eligible_from_date > CURRENT_DATE)
-        OR (pl.nationality_status = 'foreign_residency'
+        OR ({_RESIDENCY_ROUTE}
             AND pl.bahrain_residency_start_date IS NOT NULL
             AND pl.eligible_from_date IS NULL
             AND pl.bahrain_residency_start_date + INTERVAL '5 years' > CURRENT_DATE)
-        OR (pl.nationality_status = 'foreign_residency'
+        OR ({_RESIDENCY_ROUTE}
             AND pl.bahrain_residency_start_date IS NULL
             AND pl.eligible_from_date IS NULL)
     )""",

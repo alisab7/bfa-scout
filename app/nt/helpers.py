@@ -63,10 +63,17 @@ def get_eligible_squad_players() -> list[dict]:
               -- stray-NULL senior is never hidden.
               AND  (pl.age_group = 'senior' OR pl.age_group IS NULL)
               AND  (
-                    pl.nationality_status IN ('bahraini', 'foreign_ancestry')
+                    -- Birthright: born citizen (bahraini, NO origin) or
+                    -- ancestry. Passport holders (bahraini + origin) are NOT
+                    -- birthright — they run the residency clock below, so a
+                    -- still-counting holder is not wrongly on the eligible squad.
+                    (pl.nationality_status = 'bahraini' AND pl.origin_country IS NULL)
+                 OR pl.nationality_status = 'foreign_ancestry'
                  OR (pl.eligible_from_date IS NOT NULL
                      AND pl.eligible_from_date <= CURRENT_DATE)
-                 OR (pl.nationality_status = 'foreign_residency'
+                 OR ((pl.nationality_status = 'foreign_residency'
+                      OR (pl.nationality_status = 'bahraini'
+                          AND pl.origin_country IS NOT NULL))
                      AND pl.bahrain_residency_start_date IS NOT NULL
                      AND pl.bahrain_residency_start_date + INTERVAL '5 years'
                          <= CURRENT_DATE)

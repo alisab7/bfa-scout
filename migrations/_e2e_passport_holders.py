@@ -311,6 +311,29 @@ try:
     chk("P15c real-HTTP PDF still generates (no regression)",
         len(pdf_pend.strip()) > 50)
 
+    # ── P16: /players?elig= filter buckets (the player-84 bug) ────────
+    # A passport holder still counting down must NOT appear under
+    # 'eligible_now' — it belongs in 'pending'. Born citizens (bahraini, no
+    # origin) and 5y-complete holders ARE eligible_now. Fixtures at this point:
+    #   PH_PEND  = bahraini+origin, residency ~6mo short of 5y  → pending
+    #   PH_DONE  = bahraini+origin, residency >5y ago           → eligible_now
+    #   CITIZEN  = plain bahraini (origin cleared in P9e)        → eligible_now
+    #   RESIDENT = foreign_residency, counting                  → pending
+    print("\n=== P16: /players?elig= filter (player-84 regression) ===")
+    elig_now = http(admin, "GET", "/players/?elig=eligible_now")[1]
+    pending  = http(admin, "GET", "/players/?elig=pending")[1]
+    chk("P16a still-counting passport holder NOT in 'eligible_now'",
+        PH_PEND not in elig_now, "(player-84 case)")
+    chk("P16b still-counting passport holder IS in 'pending'",
+        PH_PEND in pending)
+    chk("P16c 5y-complete passport holder IS in 'eligible_now'",
+        PH_DONE in elig_now)
+    chk("P16d born citizen IS in 'eligible_now'", CITIZEN in elig_now)
+    chk("P16e born citizen NOT in 'pending'", CITIZEN not in pending)
+    chk("P16f foreign resident (counting) NOT in 'eligible_now'",
+        RESIDENT not in elig_now)
+    chk("P16g foreign resident (counting) IS in 'pending'", RESIDENT in pending)
+
 finally:
     print("\n(cleanup)")
     cleanup()
