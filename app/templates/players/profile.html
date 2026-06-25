@@ -445,7 +445,18 @@
                 {% for m in ws_history %}
                   <tr style="border-bottom:1px solid var(--border);">
                     <td class="px-3 py-2" style="color:var(--text);">
-                      <div class="font-medium">{{ m.match_date.strftime('%d %b %y') if m.match_date else '—' }}</div>
+                      {# Opponent: prefer the is_home-derived opponent ("vs X");
+                         when is_home is unknown (Wyscout import doesn't set it),
+                         show both sides ("home vs away"). Date always shows;
+                         missing teams degrade to date only. #}
+                      {% set opp = (m.away_team if m.is_home else m.home_team) if m.is_home is not none else None %}
+                      <div class="font-medium">
+                        {{ m.match_date.strftime('%d %b %y') if m.match_date else '—' }}
+                        {%- if opp %} · vs {{ opp }}
+                        {%- elif m.home_team and m.away_team %} · {{ m.home_team }} vs {{ m.away_team }}
+                        {%- elif m.home_team or m.away_team %} · vs {{ m.home_team or m.away_team }}
+                        {%- endif %}
+                      </div>
                       <div class="text-xs truncate max-w-xs" style="color:var(--text-muted);">{{ m.competition or '' }}</div>
                     </td>
                     <td class="px-3 py-2 text-center" style="color:var(--text-muted);">{{ m.position_raw or '—' }}</td>

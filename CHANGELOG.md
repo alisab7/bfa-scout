@@ -1,5 +1,35 @@
 # Changelog
 
+## v1.7.5 — Player profile: show opponent in Recent Matches (2026-06-25)
+
+The profile's **Recent Matches** rows showed only the date. Each row now also
+shows who the match was against. Pure template change — no schema, no query
+change, no match-data change.
+
+### What landed
+- [profile.html](app/templates/players/profile.html) Recent-Matches "Match" cell now appends the
+  opponent next to the date, e.g. **"01 May 26 · Al Muharraq vs Riffa"**.
+- The data was already there: `get_player_match_history`
+  ([wyscout/aggregations.py](app/wyscout/aggregations.py)) already SELECTs
+  `home_team, away_team, is_home` — only the template wasn't rendering them.
+- **Opponent choice (data-driven):** `wyscout_match_stats.is_home` (the field
+  that would identify the player's own side) is **NULL across all rows** — the
+  Wyscout import doesn't populate it — so the template shows **both teams
+  ("home vs away")**, which is always correct. It auto-upgrades to a single
+  **"vs &lt;opponent&gt;"** if `is_home` is ever set (TRUE → away team, FALSE →
+  home team). Missing teams degrade gracefully to date-only.
+
+### Verification
+- New `migrations/_e2e_recent_matches_opponent.py` — **10/10** (real HTTP,
+  asserts on rendered profile HTML): both-teams row → "Al Muharraq vs Riffa";
+  single team → "vs Sitra"; `is_home=TRUE` → "vs Manama" (own team hidden);
+  `is_home=FALSE` → "vs Budaiya" (own team hidden); no-teams row renders
+  date-only with no stray "vs"; opponent text matches the DB record.
+- Regression (profile is shared — all player types render): passport-holders
+  47/0, eligibility-badge 13/0, nt-residents 17/0, youth 28/0, bulk-import
+  40/0, Phase 9 46/0, v1.0.2 pass. phase_6_1 = 52/3 (the documented
+  pre-existing flag/timing fails; unrelated, unchanged).
+
 ## v1.7.4 — Fix: still-counting passport holders wrongly shown "eligible now" (2026-06-25)
 
 A **code** bug (not data): the eligibility filters classified **every** Bahraini
