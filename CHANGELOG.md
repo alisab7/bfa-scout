@@ -1,5 +1,29 @@
 # Changelog
 
+## v1.7.6 — Player profile: Recent Matches collapsible (2026-06-25)
+
+The profile's **Recent Matches** card is now collapsible. Pure template change
+— no schema, query, or data change.
+
+### What landed
+- [profile.html](app/templates/players/profile.html): the Recent-Matches header is now a
+  toggle button (Alpine `x-data="{ rmOpen: true }"` + `@click` + `x-show`),
+  with a rotating chevron and the match count in the header
+  ("Recent Matches (10)"). **Defaults to open** so existing behaviour is
+  preserved; click to collapse/expand. Same Alpine idiom already used by the
+  shortlist-note control in this template (Alpine core only — no `collapse`
+  plugin needed; `x-cloak` intentionally omitted since the section defaults
+  open, and the app has no global `[x-cloak]` rule).
+
+### Verification
+- `migrations/_e2e_recent_matches_opponent.py` extended to **15/15** (real
+  HTTP): collapsible wrapper (`x-data` rmOpen), toggle button
+  (`@click="rmOpen = !rmOpen"`), body bound to `x-show="rmOpen"`, default-open
+  (rows still server-rendered), and the count in the header — all asserted on
+  the rendered profile HTML. Existing opponent cases (M1–M5) still pass.
+- Regression: passport-holders 47/0, eligibility-badge 13/0, nt-residents 17/0,
+  5c2.1 48/0, v1.0.2 pass.
+
 ## v1.7.5 — Player profile: show opponent in Recent Matches (2026-06-25)
 
 The profile's **Recent Matches** rows showed only the date. Each row now also

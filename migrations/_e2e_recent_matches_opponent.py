@@ -153,6 +153,20 @@ try:
         f"{r['home_team']} vs {r['away_team']}" in html,
         f"{r['home_team']} vs {r['away_team']}")
 
+    print("\n=== Collapse: Recent Matches is collapsible (Alpine scaffolding) ===")
+    # The toggle is client-side (Alpine x-show), so assert the markup is wired
+    # and the rows are still server-rendered (Alpine hides/shows in the browser).
+    chk("collapsible wrapper present (x-data rmOpen)",
+        'x-data="{ rmOpen: true }"' in html)
+    chk("toggle button present (@click toggles rmOpen)",
+        '@click="rmOpen = !rmOpen"' in html)
+    chk("matches body bound to x-show=rmOpen",
+        'x-show="rmOpen"' in html)
+    chk("default open (rmOpen: true) — content not hidden server-side",
+        "Al Muharraq vs Riffa" in html)
+    chk("header shows the match count", "Recent Matches" in html
+        and "(5)" in html)
+
 finally:
     print("\n(cleanup)")
     cleanup()

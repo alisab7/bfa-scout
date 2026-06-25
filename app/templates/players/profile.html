@@ -419,14 +419,25 @@
         </div>
       </div>
 
-      <!-- Recent matches table -->
+      <!-- Recent matches table (collapsible — default open) -->
       {% if ws_history %}
-        <div class="rounded-xl overflow-hidden"
+        <div class="rounded-xl overflow-hidden" x-data="{ rmOpen: true }"
              style="background:var(--surface);border:1px solid var(--border);">
-          <div class="px-4 py-3" style="border-bottom:1px solid var(--border);">
-            <h3 class="text-sm font-semibold" style="color:var(--text-muted);">Recent Matches</h3>
-          </div>
-          <div class="overflow-x-auto">
+          <button type="button" @click="rmOpen = !rmOpen"
+                  class="w-full flex items-center justify-between px-4 py-3 text-left"
+                  :style="rmOpen ? 'border-bottom:1px solid var(--border);' : ''"
+                  :aria-expanded="rmOpen ? 'true' : 'false'">
+            <h3 class="text-sm font-semibold" style="color:var(--text-muted);">
+              Recent Matches
+              <span class="font-normal">({{ ws_history|length }})</span>
+            </h3>
+            <svg class="w-4 h-4 transition-transform" style="color:var(--text-muted);"
+                 :class="rmOpen ? 'rotate-180' : ''"
+                 fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </button>
+          <div class="overflow-x-auto" x-show="rmOpen">
             <table class="w-full text-xs">
               <thead>
                 <tr style="border-bottom:1px solid var(--border);">
