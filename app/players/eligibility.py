@@ -190,7 +190,10 @@ def compute_eligibility_status(player) -> dict:
             # (`humanize_time_until`); only the LABEL changes. No new math.
             today = date.today()
             target = _resolve_eligibility_date(get)
-            note_base = f"Passport holder · origin {origin}"
+            # Note shows the origin + residency context. The "Passport holder"
+            # wording was dropped (v1.7.3) — origin + countdown convey it; the
+            # is_passport_holder flag below is kept for template conditions.
+            note_base = f"Origin: {origin}"
             if target is None:
                 return {"icon": "⏳",
                         "label": "Pending — residency start not set",

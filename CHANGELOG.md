@@ -1,5 +1,44 @@
 # Changelog
 
+## v1.7.3 — Drop "Passport holder" tag; BFA logo in the passport PDF (2026-06-25)
+
+Two display changes for naturalized Bahrainis. Pure template/code — no schema,
+no eligibility-logic change.
+
+### Change 1 — removed the "Passport holder" tag (kept origin + countdown)
+A bahraini+origin player now shows simply **Bahrain (+flag) · Origin: <country>
+(+flag) · countdown** — the `🛂 Passport holder` label is gone everywhere it
+rendered. The underlying logic (bahraini + origin → countdown via
+`compute_eligibility_status`) and the `is_passport_holder` flag (template
+condition) are unchanged.
+- `players/eligibility.py`: eligibility note `"Passport holder · origin {X}"`
+  → `"Origin: {X}"` (single source rendered on both profile card **and** PDF).
+- `profile.html`: removed the `🛂 Passport holder` line under Origin.
+- `passport.html`: removed the `· Passport holder` span (kept origin + flag).
+- `nt/_residents_table.html`: residents row `🛂 Passport holder · Origin: X`
+  → `Origin: X`.
+- Dropped the now-unused `.passport-holder-tag` CSS.
+
+### Change 2 — BFA logo in the passport PDF header
+The top-left text wordmark (`BFA` / "Bahrain Football Association") is replaced
+by the real **BFA logo** (`app/static/img/bfa-logo.png`). Embedded as a base64
+**data URI** via a new `_resolve_logo_data_uri()` (module-cached), mirroring the
+player-photo approach so the PDF stays self-contained (WeasyPrint's network
+fetcher is unreliable). Falls back to the text wordmark if the file is missing;
+"Bahrain Football Association" kept as a subtitle; "Player Passport" title
+unchanged on the right.
+
+### Verification
+- `migrations/_e2e_passport_holders.py`: **40/40** (was 37). Inverted the old
+  "shows Passport holder" assertions to assert the string is **absent** on the
+  profile, the PDF (real-HTTP + pypdf text), the players list, and the residents
+  row — while keeping origin + countdown checks. New **P15**: logo embedded as a
+  `data:image/png` URI in the header (`class="brand-logo"`), text wordmark
+  replaced, real-HTTP PDF still generates.
+- Regression: eligibility-badge 13/0, residents-countdown 5/0, nt-residents
+  17/0, v1.0.2 pass. **phase_6_1 = 52/3 — the 3 fails are the documented
+  PRE-EXISTING ones** (flag-inline / inline-svg / timing-log); zero new failures.
+
 ## v1.7.2 — Origin country + passport-holder + countdown in the PDF passport (2026-06-24)
 
 Surfaces the passport-holder info (origin country, "Passport holder", NT

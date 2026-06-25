@@ -57,8 +57,10 @@
             <div class="font-semibold" style="color:var(--text);">{{ player.nationality }}</div>
           </div>
         {% endif %}
-        {# Passport holder (naturalized Bahraini): origin country — PROFILE ONLY,
-           never on the players list. Defined by bahraini + origin_country set. #}
+        {# Origin country for naturalized Bahrainis — PROFILE ONLY, never on the
+           players list. Shown when bahraini + origin_country set. (The
+           "Passport holder" tag was dropped in v1.7.3: Bahrain + Origin +
+           countdown convey it without the label.) #}
         {% if player.nationality_status == 'bahraini' and player.origin_country %}
           <div>
             <div class="text-xs uppercase tracking-wide mb-0.5" style="color:var(--text-muted);">Origin</div>
@@ -70,9 +72,6 @@
                 {% endif %}
               {% endif %}
               {{ player.origin_country }}
-            </div>
-            <div class="text-xs mt-0.5" style="color:var(--accent);" title="Naturalized Bahraini">
-              🛂 Passport holder
             </div>
           </div>
         {% endif %}

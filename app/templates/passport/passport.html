@@ -35,7 +35,15 @@
   {# ── Header ─────────────────────────────────────────────────── #}
   <header class="passport-header">
     <div class="brand">
-      <span class="brand-mark">BFA</span>
+      {# BFA logo, embedded as a data URI by the route (self-contained PDF,
+         mirroring the player photo). Falls back to the text wordmark if the
+         logo file is missing. #}
+      {% if logo_data_uri %}
+        <img class="brand-logo" src="{{ logo_data_uri }}"
+             alt="Bahrain Football Association">
+      {% else %}
+        <span class="brand-mark">BFA</span>
+      {% endif %}
       <span class="brand-text">Bahrain Football Association</span>
     </div>
     <h1>Player Passport
@@ -87,8 +95,9 @@
             {% endif %}
           </span>
         </div>
-        {# Passport holder (naturalized Bahraini): origin country — matches the
-           player profile. Defined by bahraini + origin_country set. #}
+        {# Origin country for naturalized Bahrainis — matches the player
+           profile. Shown when bahraini + origin_country set. (The "Passport
+           holder" tag was dropped in v1.7.3.) #}
         {% if player.nationality_status == 'bahraini' and player.origin_country %}
           <div><span class="bio-k">Origin</span>
             <span class="bio-v">
@@ -96,7 +105,6 @@
               {% if player.origin_flag_svg %}
                 <span class="flag-inline">{{ player.origin_flag_svg | safe }}</span>
               {% endif %}
-              <span class="passport-holder-tag">· Passport holder</span>
             </span>
           </div>
         {% endif %}

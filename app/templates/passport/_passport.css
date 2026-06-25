@@ -89,6 +89,14 @@ h4 {
   padding: 2pt 6pt;
   letter-spacing: 1pt;
 }
+/* BFA logo in the passport header (replaces the text wordmark). Sized in pt
+   so it stays stable at print scale; width auto preserves aspect ratio. */
+.brand-logo {
+  height: 42pt;
+  width: auto;
+  display: block;
+  margin-bottom: 2pt;
+}
 .brand-text {
   font-size: 8pt;
   color: #666;
@@ -148,12 +156,6 @@ h4 {
 .bio-v {
   font-weight: 600;
   font-size: 10.5pt;
-}
-/* Passport holder (naturalized Bahraini) tag next to the origin country. */
-.passport-holder-tag {
-  font-weight: 600;
-  font-size: 9pt;
-  color: #1F7A4D;
 }
 
 /* Phase 6.1: inline SVG flag next to nationality label. Sized in pt so

@@ -4,20 +4,22 @@ E2E — Passport holders (naturalized Bahraini + origin country).
 Real Flask + real HTTP (NOT flask.test_client). Server on 127.0.0.1:5057.
 
 A passport holder = nationality_status='bahraini' AND origin_country set.
-They run the SAME 5-year residency countdown as residents; only the label
-changes (Bahraini + origin + "Passport holder").
+They run the SAME 5-year residency countdown as residents. The visible
+"Passport holder" tag was DROPPED in v1.7.3 — a holder now shows simply as
+Bahraini + Origin + countdown (the tag's words must NOT render anywhere).
 
   P1  passport holder, residency ~6mo from 5y → profile: Bahraini, Origin,
-      "Passport holder", countdown "Eligible in 0y 6m"
+      countdown "Eligible in 0y 6m", and NO "Passport holder" text
   P2  passport holder, residency >5y ago → "Eligible now" (no countdown)
   P3  born citizen (bahraini, no origin) → "Citizen", no origin, no countdown
-  P4  foreign_residency (no origin) → UNCHANGED: foreign nationality, countdown,
-      NOT "passport holder", NOT relabeled Bahraini
+  P4  foreign_residency (no origin) → UNCHANGED: foreign nationality, countdown
   P5  origin on PROFILE but NOT on the players LIST
-  P6  passport holder appears on /nt/residents with the passport-holder label
+  P6  passport holder on /nt/residents shows Origin (no "Passport holder" tag)
   P7  residents countdown == profile countdown (consistency)
   P8  filter: bahraini+origin returns exactly the passport holders (queryable)
   P9  edit form sets origin_country (persists, conn.commit)
+  P10-P14  PDF passport: origin + countdown, NO "Passport holder" text
+  P15  BFA logo embedded in the PDF header (replaces the text wordmark)
 """
 from __future__ import annotations
 
@@ -149,14 +151,16 @@ try:
     print("\n=== P1: passport holder pending ===")
     p = prof(ids['ph_pend'])
     chk("P1a profile shows Origin", "Origin" in p and "Brazil" in p)
-    chk("P1b profile shows 'Passport holder'", "Passport holder" in p)
+    chk("P1b profile does NOT show 'Passport holder' tag (dropped v1.7.3)",
+        "Passport holder" not in p)
     chk("P1c profile shows countdown 'Eligible in 0y 6m'", "Eligible in 0y 6m" in p, )
     chk("P1d nationality shown as Bahrain (not relabeled foreign)", "Bahrain" in p)
 
     print("\n=== P2: passport holder, 5y complete ===")
     p2 = prof(ids['ph_done'])
     chk("P2a eligible now (no countdown)", "Eligible now" in p2 and "Eligible in" not in p2)
-    chk("P2b still flagged passport holder", "Passport holder" in p2)
+    chk("P2b profile shows Origin, no 'Passport holder' tag",
+        "Brazil" in p2 and "Passport holder" not in p2)
 
     print("\n=== P3: born citizen unchanged ===")
     p3 = prof(ids['citizen'])
@@ -180,7 +184,8 @@ try:
     _, res_html, _ = http(admin, "GET", "/nt/residents")
     ph_row = row_block(res_html, PH_PEND)
     chk("P6a passport holder appears on /nt/residents", PH_PEND in res_html)
-    chk("P6b labelled 'Passport holder' on residents", "Passport holder" in ph_row)
+    chk("P6b residents row shows Origin, no 'Passport holder' tag",
+        "Passport holder" not in ph_row and "Origin:" in ph_row)
     chk("P7 residents countdown matches profile (Eligible in 0y 6m)",
         "Eligible in 0y 6m" in ph_row)
 
@@ -214,9 +219,10 @@ try:
         f"got {r['origin_country_code']}")
     chk("P9b edit persisted origin_country name", bool(r['origin_country']),
         f"got {r['origin_country']!r}")
-    # now the former citizen shows as passport holder
+    # now the former citizen shows the Origin line (no passport-holder tag)
     p9 = prof(ids['citizen'])
-    chk("P9c former citizen now shows 'Passport holder'", "Passport holder" in p9)
+    chk("P9c former citizen shows Origin, no 'Passport holder' tag",
+        ("Origin" in p9) and ("Passport holder" not in p9))
 
     # P9d (the reported bug): the EDIT FORM must PRE-SELECT the saved origin on
     # reload — not just persist to the DB. Catches the blank-on-reload read bug.
@@ -248,7 +254,8 @@ try:
     print("\n=== P10: passport holder pending — PDF ===")
     pdf_pend = pdf_text(admin, f"/players/{ids['ph_pend']}/passport.pdf")
     chk("P10a PDF shows origin country (Brazil)", "Brazil" in pdf_pend)
-    chk("P10b PDF shows 'Passport holder'", "Passport holder" in pdf_pend)
+    chk("P10b PDF does NOT show 'Passport holder' tag (dropped v1.7.3)",
+        "Passport holder" not in pdf_pend)
     chk("P10c PDF shows the countdown 'Eligible in 0y 6m'",
         "Eligible in 0y 6m" in pdf_pend)
     chk("P10d PDF keeps nationality Bahrain (not relabeled foreign)",
@@ -258,7 +265,8 @@ try:
     pdf_done = pdf_text(admin, f"/players/{ids['ph_done']}/passport.pdf")
     chk("P11a PDF eligible now (no future countdown)",
         "Eligible now" in pdf_done and "Eligible in" not in pdf_done)
-    chk("P11b PDF still flags passport holder", "Passport holder" in pdf_done)
+    chk("P11b PDF shows Origin, no 'Passport holder' tag",
+        "Brazil" in pdf_done and "Passport holder" not in pdf_done)
 
     print("\n=== P12: born citizen — PDF unchanged ===")
     # ids['citizen'] was made a holder in P9 then cleared in P9e → plain citizen.
@@ -276,6 +284,32 @@ try:
     prof_pend = prof(ids['ph_pend'])
     chk("P14 same origin (Brazil) on BOTH profile and PDF",
         ("Brazil" in prof_pend) and ("Brazil" in pdf_pend))
+
+    print("\n=== P15: BFA logo in the passport PDF header ===")
+    # The logo is an embedded image (no text layer), so assert on the pre-PDF
+    # HTML that the route+template produce, plus confirm the real-HTTP PDF
+    # still generates (no regression). Render via the app context (not a fake
+    # HTTP test client) using the exact route data path.
+    from app import create_app
+    from flask import render_template
+    _app = create_app()
+    with _app.app_context(), _app.test_request_context():
+        from app.passport.data import get_passport_data
+        from app.passport import _resolve_logo_data_uri
+        pdata = get_passport_data(ids['ph_pend'], mode='full',
+                                  requesting_user_role='admin')
+        pdata['wyscout_radar_svg'] = None
+        pdata['player']['photo_data_uri'] = None
+        pdata['logo_data_uri'] = _resolve_logo_data_uri()
+        html = render_template('passport/passport.html', **pdata)
+    chk("P15a logo embedded as data URI in header (class=brand-logo)",
+        'class="brand-logo"' in html and 'data:image/png;base64,' in html)
+    chk("P15b text wordmark replaced (no standalone brand-mark fallback)",
+        'class="brand-mark"' not in html)
+    # Real-HTTP PDF still renders fine (already fetched pdf_pend text above —
+    # non-empty text layer proves the PDF generated end-to-end).
+    chk("P15c real-HTTP PDF still generates (no regression)",
+        len(pdf_pend.strip()) > 50)
 
 finally:
     print("\n(cleanup)")

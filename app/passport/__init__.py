@@ -73,6 +73,31 @@ def _resolve_photo_data_uri(player_id: int) -> str | None:
     return f"data:image/jpeg;base64,{b64}"
 
 
+# Module-level cache: the BFA logo is a static asset that never changes at
+# runtime, so read + base64-encode it once on first use.
+_LOGO_DATA_URI: str | None = None
+_LOGO_RESOLVED = False
+
+
+def _resolve_logo_data_uri() -> str | None:
+    """Return a data:URI for the BFA logo (app/static/img/bfa-logo.png), or
+    None if the file is missing. Mirrors `_resolve_photo_data_uri`: WeasyPrint's
+    network image fetcher is unreliable, so the logo is embedded as a base64
+    data URI to keep the PDF fully self-contained. Cached after first read."""
+    global _LOGO_DATA_URI, _LOGO_RESOLVED
+    if _LOGO_RESOLVED:
+        return _LOGO_DATA_URI
+    _LOGO_RESOLVED = True
+    path = os.path.join(current_app.root_path, 'static', 'img', 'bfa-logo.png')
+    try:
+        with open(path, 'rb') as fh:
+            raw = fh.read()
+        _LOGO_DATA_URI = f"data:image/png;base64,{base64.b64encode(raw).decode('ascii')}"
+    except OSError:
+        _LOGO_DATA_URI = None
+    return _LOGO_DATA_URI
+
+
 @bp.route('/players/<int:player_id>/passport.pdf')
 @login_required
 def player_passport(player_id):
@@ -110,6 +135,9 @@ def player_passport(player_id):
 
     # Embed the player photo as a data URI for offline self-contained PDF.
     data['player']['photo_data_uri'] = _resolve_photo_data_uri(player_id)
+
+    # Embed the BFA logo (header) the same self-contained way as the photo.
+    data['logo_data_uri'] = _resolve_logo_data_uri()
 
     # Generator name on the footer. Public mode redacts to a generic
     # institutional label so an externally-shared PDF doesn't doxx the
