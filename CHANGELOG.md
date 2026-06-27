@@ -1,5 +1,48 @@
 # Changelog
 
+## v1.8.2 — Eligibility fetch consolidated; cross-surface consistency E2E (2026-06-27)
+
+### Kills the starved-query bug class
+
+The recurring "passport holder shows Citizen instead of countdown" bug was fixed
+surface-by-surface multiple times. This change ends the class:
+
+**`get_eligible_squad_players()` — fixed the one remaining gap**
+- `app/nt/helpers.py`: `origin_country` and `origin_country_code` added to the
+  SELECT. The WHERE clause was already correct (still-counting passport holders
+  excluded via `origin_country IS NULL` gate), but the returned dict didn't carry
+  the field — any future badge macro on the NT squad template would have been
+  starved immediately.
+
+**`ELIGIBILITY_REQUIRED_COLUMNS` constant**
+- `app/players/eligibility.py`: module-level tuple documents the four fields every
+  player SELECT for an eligibility surface must include. Codifies the invariant for
+  future query authors; the E2E (below) is the live enforcement.
+
+**Cross-surface consistency E2E — the permanent guard**
+- New `migrations/_e2e_cross_surface_eligibility.py`: takes a single
+  passport-holder (bahraini + origin, under 5y) and asserts the IDENTICAL
+  "Eligible in 0y 6m" label across ALL surfaces:
+  - players-list card badge (S1a)
+  - player profile (S1b)
+  - passport PDF — pypdf text extraction (S1c; same label because
+    `_build_passport_eligibility` delegates to `compute_eligibility_status`
+    for bahraini+origin)
+  - comparison view badge (S1d)
+  - /nt/residents still-counting countdown in parens (S1e)
+  - /players?elig=pending filter card (S1f)
+  - NOT in eligible_now filter (S1g)
+  - NOT in /nt squad — WHERE still correctly excludes still-counting holders (S1h)
+  - Born citizen: "Citizen" on HTML surfaces; PDF "Eligible now"/"Bahraini";
+    in /nt squad with "Bahraini citizen"; in eligible_now bucket (S2)
+  - Foreign resident: countdown on list + profile + /nt/residents (S3)
+  - Cross-surface label agreement assertions (S4)
+- Any future query that drops `origin_country` → S1a–S1d fail immediately.
+
+No behavior change. No schema migration. Pure-code refactor + guard.
+
+---
+
 ## v1.8.1 — Fix: players-list card badge shows countdown for bahraini+origin (2026-06-25)
 
 Naturalized players (bahraini + `origin_country`, e.g. Juninho, Soufian

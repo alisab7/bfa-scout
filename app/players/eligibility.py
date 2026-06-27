@@ -17,6 +17,18 @@ from datetime import date
 # `eligible_from_date` admin field if a specific case differs.
 RESIDENCY_YEARS_REQUIRED = 5
 
+# Mandatory columns for EVERY player SELECT that feeds compute_eligibility_status.
+# Without origin_country a bahraini+origin passport holder is misread as a born
+# citizen → wrong "Citizen" badge (the "starved-query" bug class).
+# The cross-surface E2E (_e2e_cross_surface_eligibility.py) is the live guard;
+# this tuple documents the invariant for future query authors.
+ELIGIBILITY_REQUIRED_COLUMNS: tuple[str, ...] = (
+    "nationality_status",
+    "eligible_from_date",
+    "bahrain_residency_start_date",
+    "origin_country",
+)
+
 
 def compute_suggested_eligibility(residency_start) -> date | None:
     """

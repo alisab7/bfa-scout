@@ -50,6 +50,13 @@ def get_eligible_squad_players() -> list[dict]:
                    pl.dob, pl.current_club, pl.nationality_code,
                    pl.nationality_status, pl.eligible_from_date,
                    pl.bahrain_residency_start_date,
+                   -- origin_country: guards against the starved-query bug; any
+                   -- future badge macro on this view needs it to distinguish
+                   -- born citizens (no origin → "Citizen") from passport holders
+                   -- (origin set → residency countdown). WHERE already gates on
+                   -- origin_country IS NULL for the birthright branch, but the
+                   -- returned dict must also carry it so display code can't stave.
+                   pl.origin_country, pl.origin_country_code,
                    p.code  AS position_code, p.name AS position_name,
                    pg.code AS position_group_code,
                    pg.name_en AS position_group_name,
