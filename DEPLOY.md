@@ -207,7 +207,7 @@ After BFA-Scout is live and before handing access to staff:
 ```bash
 # 1. Log in to https://<domain>/auth/login as the bootstrap admin
 # 2. Go to /admin/users → edit admin user → Reset Password
-#    New password must pass complexity: ≥12 chars, upper + lower + digit
+#    New password must pass complexity: ≥8 chars, upper + lower + digit + special
 # 3. SSH into the droplet and remove the bootstrap credentials from .env
 ssh -i your-key root@164.90.181.13
 cd /home/bfa/bfa-scout

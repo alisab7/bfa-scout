@@ -1,5 +1,27 @@
 # Changelog
 
+## v1.8.3 — Docs: align password-policy statements to enforced 8-char minimum (2026-06-27)
+
+Doc-alignment fix only. No logic or behavior change.
+
+Phase 8.1 (v1.0.1) originally specified a 12-character minimum. Phase 8.1.1
+revised it to 8 characters — updating the code, the HTML forms (`minlength="8"`),
+and the function docstring. The **module-level docstring** in `validators.py` and
+several developer-facing docs were never updated and still said "12". This caused
+the spec/code drift flagged in the security review.
+
+**Files updated (docs/comments only — no code change):**
+- `app/auth/validators.py`: module docstring updated from "Min 12 characters" to
+  "Min 8 characters" with a note referencing the Phase 8.1.1 revision.
+- `DEPLOY.md §11`: bootstrap-password comment updated to `≥8 chars`.
+- `PROJECT.md` Phase 8.1 row: complexity note updated to `≥8`.
+- `.env.production.example`: `ADMIN_PASSWORD` comment updated to `min-8-chars`.
+
+**Confirmed unchanged:** enforcement line (`if len(password) < 8:`) · HTML form
+`minlength="8"` · "Minimum 8 characters" help text in user-create/edit forms.
+
+---
+
 ## v1.8.2 — Eligibility fetch consolidated; cross-surface consistency E2E (2026-06-27)
 
 ### Kills the starved-query bug class

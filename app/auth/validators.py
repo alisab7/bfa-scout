@@ -1,8 +1,9 @@
 """
 app/auth/validators.py — shared input validators for auth flows.
 
-Phase 8.1: password complexity policy
-  - Min 12 characters
+Phase 8.1 / 8.1.1: password complexity policy
+  - Min 8 characters  (Phase 8.1 originally specified 12; revised to 8 in
+                       Phase 8.1.1 — see function docstring and CHANGELOG v1.8.3)
   - At least one lowercase letter
   - At least one uppercase letter
   - At least one digit
