@@ -213,7 +213,7 @@ def get_recent_matches(limit: int = 50) -> list[dict]:
                        home_score, away_score, competition,
                        age_group, match_type, source
                 FROM   matches
-                ORDER  BY match_date DESC, id DESC
+                ORDER  BY match_date DESC NULLS LAST, id DESC
                 LIMIT  %s
                 """,
                 (limit,)

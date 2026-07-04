@@ -107,7 +107,7 @@ def get_player_match_history(player_id: int, limit: int = 20) -> list[dict]:
                     interceptions, yellow_cards, red_cards
                 FROM wyscout_match_stats
                 WHERE player_id = %s
-                ORDER BY match_date DESC
+                ORDER BY match_date DESC NULLS LAST
                 LIMIT %s
                 """,
                 (player_id, limit)

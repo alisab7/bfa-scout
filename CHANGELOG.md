@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.9.4 — Sort match lists recent-first with NULLS LAST (2026-07-04)
+
+Both match-date queries now use `ORDER BY match_date DESC NULLS LAST` instead of
+plain `DESC`, pushing any hypothetical null-date rows to the bottom rather than
+the top (PostgreSQL DESC defaults to NULLS FIRST).
+
+**Files changed:**
+- `app/evaluations/helpers.py` (`get_recent_matches`): `match_date DESC NULLS LAST, id DESC`
+- `app/wyscout/aggregations.py` (`get_player_match_history`): `match_date DESC NULLS LAST`
+
+No schema or template changes.
+
+---
+
+## v1.9.3 — Evaluation match dropdown: vs-opponent labels + own-club filter (2026-07-04)
+
+(See previous session for details.)
+
+---
+
 ## v1.9.2 — Recent Matches: true vs-opponent + own-club filter via club_aliases resolver (2026-07-04)
 
 Display-time opponent resolution for the Recent Matches table on player profiles.
