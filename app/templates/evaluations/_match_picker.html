@@ -14,13 +14,20 @@
     {% for m in matches %}
       <option value="{{ m.id }}"
               {% if selected_match_id is not none and m.id == selected_match_id %}selected{% endif %}>
-        {{ m.match_date.strftime('%Y-%m-%d') }} · {{ m.home_team }} vs {{ m.away_team }}
-        {% if m.competition %} ({{ m.competition }}){% endif %}
+        {{ m.match_date.strftime('%Y-%m-%d') }}
+        {%- if m.opponent is defined and m.opponent %} · vs {{ m.opponent }}
+        {%- else %} · {{ m.home_team }} vs {{ m.away_team }}
+        {%- endif %}
+        {%- if m.competition %} ({{ m.competition }}){% endif %}
       </option>
     {% endfor %}
   </select>
   <p class="text-xs" style="color:var(--text-muted);">
-    Showing the {{ matches|length }} most recent of up to {{ recent_match_limit }}.
+    {% if own_club_only is defined and own_club_only %}
+      Showing {{ matches|length }} match{{ 'es' if matches|length != 1 else '' }} for this player's club.
+    {% else %}
+      Showing the {{ matches|length }} most recent of up to {{ recent_match_limit }}.
+    {% endif %}
     Match not listed?
     <button type="button"
             @click="showModal = true"

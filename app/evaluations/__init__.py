@@ -63,6 +63,7 @@ def _load_player(player_id: int):
             SELECT pl.id, pl.full_name, pl.full_name_ar, pl.dob,
                    pl.primary_position_id, pl.is_active,
                    pl.nationality_code, pl.age_group,
+                   pl.club_id,
                    p.code  AS position_code, p.name AS position_name,
                    pg.id   AS position_group_id, pg.code AS group_code,
                    pg.name_en AS group_name
@@ -130,11 +131,28 @@ def _render_form(player, pos_group_id, draft=None, scores=None,
                  errors=None, form_values=None):
     criteria  = get_form_criteria(pos_group_id)
     sections  = _criteria_grouped(criteria)
-    matches   = get_recent_matches(RECENT_MATCH_LIMIT)
     # Reuse the players blueprint's position picker so the match-position
     # dropdown offers the exact same grouped options as the player forms.
     from app.players import _load_position_picker
+    from app.clubs.resolver import enrich_match_history_with_opponent
     position_groups = _load_position_picker()
+
+    # Enrich all recent matches with opponent + own_match via club_aliases resolver.
+    # Filter to own-club matches ONLY when the player has a resolvable club and
+    # that filter yields ≥1 match — otherwise fall back to ALL matches so the
+    # evaluator is never left with an empty dropdown.
+    all_matches   = get_recent_matches(RECENT_MATCH_LIMIT)
+    enriched      = enrich_match_history_with_opponent(all_matches, player.get("club_id"))
+    own_club_only = False
+    if player.get("club_id"):
+        own_club_matches = [m for m in enriched if m["own_match"]]
+        if own_club_matches:
+            matches      = own_club_matches
+            own_club_only = True
+        else:
+            matches = enriched
+    else:
+        matches = enriched
 
     # Optional ?match_id=... selects a draft to pre-load
     selected_match_id = request.args.get('match_id', type=int)
@@ -155,6 +173,7 @@ def _render_form(player, pos_group_id, draft=None, scores=None,
         position_groups=position_groups,
         recent_match_limit=RECENT_MATCH_LIMIT,
         selected_match_id=selected_match_id,
+        own_club_only=own_club_only,
         draft=draft,
         scores=scores or {},
         errors=errors or {},
