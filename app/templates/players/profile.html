@@ -285,7 +285,7 @@
 
   <!-- ── Wyscout Dashboard ── -->
   {% set ws_summary = get_wyscout_summary(player.id) %}
-  {% set ws_history = get_player_match_history(player.id, 10) %}
+  {% set ws_history = enrich_match_history_with_opponent(get_player_match_history(player.id, 10), player.club_id) %}
   {% set ws_seasons       = get_player_seasons(player.id) %}
   {% set ws_radar_seasons = get_player_radar_seasons(player.id, 2) %}
 
@@ -421,22 +421,41 @@
 
       <!-- Recent matches table (collapsible — default open) -->
       {% if ws_history %}
-        <div class="rounded-xl overflow-hidden" x-data="{ rmOpen: true }"
+        <div class="rounded-xl overflow-hidden" x-data="{ rmOpen: true, ownClubOnly: false }"
              style="background:var(--surface);border:1px solid var(--border);">
-          <button type="button" @click="rmOpen = !rmOpen"
-                  class="w-full flex items-center justify-between px-4 py-3 text-left"
-                  :style="rmOpen ? 'border-bottom:1px solid var(--border);' : ''"
-                  :aria-expanded="rmOpen ? 'true' : 'false'">
-            <h3 class="text-sm font-semibold" style="color:var(--text-muted);">
-              Recent Matches
-              <span class="font-normal">({{ ws_history|length }})</span>
-            </h3>
-            <svg class="w-4 h-4 transition-transform" style="color:var(--text-muted);"
-                 :class="rmOpen ? 'rotate-180' : ''"
-                 fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-            </svg>
-          </button>
+          <div class="flex items-center justify-between px-4 py-3"
+               :style="rmOpen ? 'border-bottom:1px solid var(--border);' : ''">
+            <button type="button" @click="rmOpen = !rmOpen"
+                    class="flex items-center gap-2 text-left flex-1 min-w-0"
+                    :aria-expanded="rmOpen ? 'true' : 'false'">
+              <h3 class="text-sm font-semibold" style="color:var(--text-muted);">
+                Recent Matches
+                <span class="font-normal">({{ ws_history|length }})</span>
+              </h3>
+            </button>
+            <div class="flex items-center gap-2 shrink-0">
+              {%- if player.club_id and (ws_history | selectattr('own_match') | list | length) > 0 %}
+                <button type="button"
+                        @click="ownClubOnly = !ownClubOnly"
+                        class="text-xs px-2 py-0.5 rounded transition-all"
+                        :style="ownClubOnly
+                          ? 'background:var(--brand);color:#fff;border:1px solid transparent;'
+                          : 'color:var(--text-muted);border:1px solid var(--border);background:transparent;'"
+                        :aria-pressed="ownClubOnly.toString()">
+                  My club only
+                </button>
+              {%- endif %}
+              <button type="button" @click="rmOpen = !rmOpen"
+                      :aria-expanded="rmOpen ? 'true' : 'false'"
+                      class="p-1 -mr-1">
+                <svg class="w-4 h-4 transition-transform" style="color:var(--text-muted);"
+                     :class="rmOpen ? 'rotate-180' : ''"
+                     fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                </svg>
+              </button>
+            </div>
+          </div>
           <div class="overflow-x-auto" x-show="rmOpen">
             <table class="w-full text-xs">
               <thead>
@@ -454,13 +473,14 @@
               </thead>
               <tbody>
                 {% for m in ws_history %}
-                  <tr style="border-bottom:1px solid var(--border);">
+                  <tr style="border-bottom:1px solid var(--border);"
+                      data-own-match="{{ 'true' if m.own_match else 'false' }}"
+                      x-show="!ownClubOnly || $el.dataset.ownMatch === 'true'">
                     <td class="px-3 py-2" style="color:var(--text);">
-                      {# Opponent: prefer the is_home-derived opponent ("vs X");
-                         when is_home is unknown (Wyscout import doesn't set it),
-                         show both sides ("home vs away"). Date always shows;
-                         missing teams degrade to date only. #}
-                      {% set opp = (m.away_team if m.is_home else m.home_team) if m.is_home is not none else None %}
+                      {# Opponent: resolved via club_aliases at display time.
+                         Falls back to "home vs away" when resolver returns None
+                         (unmapped string or player has no club). #}
+                      {% set opp = m.opponent %}
                       <div class="font-medium">
                         {{ m.match_date.strftime('%d %b %y') if m.match_date else '—' }}
                         {%- if opp %} · vs {{ opp }}

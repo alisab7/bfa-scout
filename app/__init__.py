@@ -118,6 +118,9 @@ def create_app(config_class=Config):
     app.jinja_env.globals['get_player_radar_seasons']  = get_player_radar_seasons
     app.jinja_env.globals['season_label_for_date']     = season_label_for_date
 
+    from .clubs.resolver import enrich_match_history_with_opponent
+    app.jinja_env.globals['enrich_match_history_with_opponent'] = enrich_match_history_with_opponent
+
     # Phase 5c-2 + 5c-2.1 + 5d: evaluations history, eligibility, scout-comparison
     from .evaluations.helpers import (
         get_player_evaluations, nt_readiness_summary, group_scores_by_category,

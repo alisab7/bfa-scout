@@ -1,5 +1,46 @@
 # Changelog
 
+## v1.9.2 — Recent Matches: true vs-opponent + own-club filter via club_aliases resolver (2026-07-04)
+
+Display-time opponent resolution for the Recent Matches table on player profiles.
+No database writes — fully computed at render from existing club_aliases data.
+
+**Opponent display:** each match row now shows "vs Al Hadd" (the opposing team)
+instead of "Al-Muharraq vs Al Hadd" when the player's club is identified in
+the match via the alias resolver. Falls back to the existing "home vs away"
+display when the resolver returns None (unmapped team string, or player has no
+club assigned).
+
+**Own-club filter:** a "My club only" toggle appears in the Recent Matches
+header when the player has a club and at least one own-club match is present.
+Client-side Alpine filter — rows carry a server-rendered `data-own-match`
+attribute; the toggle shows/hides them without a page reload. Hidden entirely
+for players with no club assignment.
+
+**Implementation:**
+- `app/clubs/resolver.py`: adds `enrich_match_history_with_opponent(matches,
+  player_club_id)` — single batch DB query over all team strings in the match
+  list; sets `opponent` (str|None) and `own_match` (bool) on each row dict.
+- `app/clubs/__init__.py`: exports the new function.
+- `app/__init__.py`: registers `enrich_match_history_with_opponent` as a
+  Jinja2 global (alongside the existing wyscout globals).
+- `app/templates/players/profile.html`: wraps `get_player_match_history` with
+  the enrichment call; restructures the Recent Matches header (div + two
+  buttons instead of one full-width button); adds filter toggle; adds
+  `data-own-match` + `x-show` to each `<tr>`.
+
+**Graceful degradation:** players with no `club_id` get `own_match=False` and
+`opponent=None` on every row; the filter button is not rendered.
+
+**Al Hadd → Al-Hidd:** the critical spelling variant resolves correctly via
+the existing alias — "Al Hadd" in a match becomes Al-Hidd's club_id, and an
+Al-Hidd player sees "vs Muharraq" for that fixture.
+
+**Files:** `app/clubs/resolver.py`, `app/clubs/__init__.py`, `app/__init__.py`,
+`app/templates/players/profile.html`.
+
+---
+
 ## v1.9.1 — Nav: collapsible "Admin Tools" section groups all admin screens (2026-07-04)
 
 Nav-only change. No routes, auth, or admin screen logic changed.
