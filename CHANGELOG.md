@@ -1,5 +1,27 @@
 # Changelog
 
+## v1.9.1 — Nav: collapsible "Admin Tools" section groups all admin screens (2026-07-04)
+
+Nav-only change. No routes, auth, or admin screen logic changed.
+
+Groups all 8 admin screens under a single collapsible "Admin Tools" entry in
+both desktop and mobile nav. Previously only Users and Club Aliases had nav
+links; the other 6 screens were reachable by direct URL only.
+
+**Gating:** whole section visible to `admin + TD`; admin+TD tools (Club
+Aliases, Assign Clubs, Assign Positions) shown to both; admin-only tools
+(Users, Bulk Import, Registry Import, Photo Import, Deleted Evaluations)
+gated by `has_role('admin')` within the section.
+
+**Implementation:** adds `adminOpen: false` to the existing nav `x-data`
+object; uses the same `x-show`/`x-cloak`/`@click` Alpine idiom already in
+the codebase. Desktop: absolute-positioned dropdown. Mobile: inline expand.
+Default collapsed. No new JS library.
+
+**Files:** `app/templates/base.html` only.
+
+---
+
 ## v1.9.0 — Club aliases table + resolver + admin management screen (2026-07-04)
 
 ### What this is
