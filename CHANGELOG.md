@@ -1,5 +1,49 @@
 # Changelog
 
+## v1.9.0 — Club aliases table + resolver + admin management screen (2026-07-04)
+
+### What this is
+
+Keystone for match reconciliation. Wyscout match data stores teams as
+free-text strings ("Muharraq", "Al Hadd") that share 0 exact matches with
+`clubs.name` ("Al-Muharraq", "Al-Hidd"). This blocked two features: true
+vs-opponent on Recent Matches, and the league-matches filter. This session
+builds the mapping layer those features will ride on (Session 2 wires them up).
+
+### Changes
+
+**Schema** — `club_aliases(id, club_id FK→clubs, alias_text, created_at)`.
+Unique constraint on `LOWER(alias_text)` (case-insensitive uniqueness, one
+match-string → exactly one club). Migration: `migrations/phase_club_aliases.sql`.
+
+**Seed** — 12 real match-team strings from `wyscout_match_stats` mapped to
+canonical clubs. Mapped by `clubs.name` lookup (portable across dev/prod).
+Includes the manual case: `Al Hadd → Al-Hidd` (spelling variant impossible to
+resolve by normalization). Idempotent: `ON CONFLICT (LOWER(alias_text)) DO NOTHING`.
+
+**Resolver** — `app/clubs/resolver.py: resolve_club_from_team_string(team_string)`
+Case-insensitive lookup. Returns `club_id` or `None` — never guesses. Single
+function all future callers use.
+
+**Admin screen** — `/admin/club-aliases`: list all aliases, add new, reassign to
+different club, delete. "Unmapped match strings" section shows any
+`home_team`/`away_team` in `wyscout_match_stats` with no alias yet (currently 0
+after seeding; catches future imports). Sidebar link in nav for admin users.
+
+**Audit** — add / reassign / delete all logged via `log_audit`.
+
+### Files
+
+- `migrations/phase_club_aliases.sql` — table + idempotent seed (run on prod before restart)
+- `app/clubs/__init__.py`, `app/clubs/resolver.py` — resolver package
+- `app/admin/club_aliases.py` — admin routes
+- `app/templates/admin/club_aliases.html` — admin template
+- `app/admin/__init__.py` — registers club_aliases routes
+- `app/templates/base.html` — adds "Club Aliases" to admin nav
+- `schema.sql` — section 7b added
+
+---
+
 ## v1.8.3 — Docs: align password-policy statements to enforced 8-char minimum (2026-06-27)
 
 Doc-alignment fix only. No logic or behavior change.

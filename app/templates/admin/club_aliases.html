@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+
+{% block title %}Club Aliases — BFA Scout{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto px-4 py-8">
+
+  <a href="{{ url_for('admin.users_list') }}"
+     class="text-sm mb-4 inline-block" style="color:var(--text-muted);">&larr; Admin</a>
+
+  <h1 class="text-2xl font-bold mb-2" style="color:var(--text);">Club Aliases</h1>
+  <p class="text-sm mb-6" style="color:var(--text-muted);">
+    Maps raw match-team strings (as they appear in Wyscout data) to canonical clubs.
+    Every distinct home_team / away_team value must have an alias for match
+    reconciliation and vs-opponent display to work. Add an alias when a new team
+    string appears in imported data.
+  </p>
+
+  {# ── Unmapped strings ─────────────────────────────────────────────────── #}
+  {% if unmapped %}
+    <div class="rounded-xl p-5 mb-6"
+         style="background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.4);">
+      <h2 class="text-base font-semibold mb-2" style="color:#B45309;">
+        ⚠ {{ unmapped|length }} unmapped match string{{ '' if unmapped|length == 1 else 's' }}
+      </h2>
+      <p class="text-sm mb-3" style="color:var(--text-muted);">
+        These team strings appear in match data but have no alias yet.
+        Use the form below to map each one to its club.
+      </p>
+      <ul class="space-y-1">
+        {% for s in unmapped %}
+          <li class="text-sm font-mono" style="color:var(--text);">{{ s }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% else %}
+    <div class="rounded-xl p-4 mb-6"
+         style="background:rgba(34,197,94,0.07);border:1px solid rgba(34,197,94,0.3);">
+      <p class="text-sm" style="color:#166534;">
+        ✓ All match-team strings are mapped. No unmapped strings.
+      </p>
+    </div>
+  {% endif %}
+
+  {# ── Add new alias ────────────────────────────────────────────────────── #}
+  <div class="rounded-xl p-5 mb-6"
+       style="background:var(--surface);border:1px solid var(--border);">
+    <h2 class="text-base font-semibold mb-3" style="color:var(--text);">Add alias</h2>
+    <form method="POST" action="{{ url_for('admin.club_aliases_add') }}"
+          class="flex flex-wrap items-end gap-3">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="flex flex-col gap-1">
+        <label class="text-xs" style="color:var(--text-muted);">Match string (exact)</label>
+        <input type="text" name="alias_text" required
+               placeholder='e.g. "Al Hadd"'
+               class="px-3 py-2 rounded text-sm w-52"
+               style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+      </div>
+
+      <div class="flex flex-col gap-1">
+        <label class="text-xs" style="color:var(--text-muted);">Maps to club</label>
+        <select name="club_id" required
+                class="px-3 py-2 rounded text-sm"
+                style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+          <option value="">— Choose club —</option>
+          {% for division in ['premier', 'first'] %}
+            <optgroup label="{{ 'Premier League' if division == 'premier' else 'First Division' }}">
+              {% for c in clubs if c.division == division %}
+                <option value="{{ c.id }}">{{ c.name }}</option>
+              {% endfor %}
+            </optgroup>
+          {% endfor %}
+        </select>
+      </div>
+
+      <button type="submit"
+              class="px-4 py-2 rounded text-sm font-semibold text-white"
+              style="background:var(--brand);">
+        Add alias
+      </button>
+    </form>
+  </div>
+
+  {# ── Alias table ──────────────────────────────────────────────────────── #}
+  {% if aliases %}
+    <div class="rounded-xl overflow-hidden"
+         style="background:var(--surface);border:1px solid var(--border);">
+      <div class="px-5 py-3 flex items-center justify-between"
+           style="border-bottom:1px solid var(--border);">
+        <h2 class="text-base font-semibold" style="color:var(--text);">
+          Mapped aliases ({{ aliases|length }})
+        </h2>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr style="background:var(--bg);border-bottom:1px solid var(--border);">
+              <th class="px-4 py-3 text-left font-medium" style="color:var(--text-muted);">Match string</th>
+              <th class="px-4 py-3 text-left font-medium" style="color:var(--text-muted);">→ Club</th>
+              <th class="px-4 py-3 text-left font-medium" style="color:var(--text-muted);">Reassign</th>
+              <th class="px-4 py-3 text-left font-medium" style="color:var(--text-muted);"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for a in aliases %}
+              <tr style="border-bottom:1px solid var(--border);">
+
+                {# Match string #}
+                <td class="px-4 py-3 font-mono font-medium" style="color:var(--text);">
+                  {{ a.alias_text }}
+                </td>
+
+                {# Current club #}
+                <td class="px-4 py-3" style="color:var(--text);">
+                  {{ a.club_name }}
+                </td>
+
+                {# Reassign form #}
+                <td class="px-4 py-3">
+                  <form method="POST"
+                        action="{{ url_for('admin.club_aliases_reassign', alias_id=a.id) }}"
+                        class="flex items-center gap-2">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <select name="club_id" required
+                            class="px-2 py-1 rounded text-xs"
+                            style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+                      {% for division in ['premier', 'first'] %}
+                        <optgroup label="{{ 'Premier' if division == 'premier' else 'First' }}">
+                          {% for c in clubs if c.division == division %}
+                            <option value="{{ c.id }}"
+                              {{ 'selected' if c.id == a.club_id else '' }}>
+                              {{ c.name }}
+                            </option>
+                          {% endfor %}
+                        </optgroup>
+                      {% endfor %}
+                    </select>
+                    <button type="submit"
+                            class="px-3 py-1 rounded text-xs font-medium"
+                            style="background:var(--border);color:var(--text);">
+                      Reassign
+                    </button>
+                  </form>
+                </td>
+
+                {# Delete #}
+                <td class="px-4 py-3">
+                  <form method="POST"
+                        action="{{ url_for('admin.club_aliases_delete', alias_id=a.id) }}"
+                        x-data
+                        @submit.prevent="
+                          $event.target.submit()
+                        "
+                        onsubmit="return confirm('Delete alias &quot;{{ a.alias_text }}&quot;? Match data using this string will become unmapped.');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit"
+                            class="px-3 py-1 rounded text-xs font-medium"
+                            style="background:rgba(200,16,46,0.1);color:#C8102E;">
+                      Delete
+                    </button>
+                  </form>
+                </td>
+
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  {% else %}
+    <div class="rounded-xl p-6"
+         style="background:var(--surface);border:1px solid var(--border);">
+      <p class="text-sm" style="color:var(--text-muted);">
+        No aliases yet. Add the first one above.
+      </p>
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}

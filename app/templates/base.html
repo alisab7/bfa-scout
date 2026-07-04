@@ -104,6 +104,9 @@
             <a href="{{ url_for('admin.users_list') }}"
                class="transition-opacity hover:opacity-80"
                style="color:var(--text);">Users</a>
+            <a href="{{ url_for('admin.club_aliases') }}"
+               class="transition-opacity hover:opacity-80"
+               style="color:var(--text);">Club Aliases</a>
           {% endif %}
         </div>
       {% endif %}
@@ -191,6 +194,9 @@
           <a href="{{ url_for('admin.users_list') }}"
              class="block py-2 text-sm font-medium"
              style="color:var(--text);">Users</a>
+          <a href="{{ url_for('admin.club_aliases') }}"
+             class="block py-2 text-sm font-medium"
+             style="color:var(--text);">Club Aliases</a>
         {% endif %}
       </div>
     {% endif %}

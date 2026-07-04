@@ -10,6 +10,7 @@ from . import registry_import  # noqa: E402,F401 — registers /admin/import/pla
 from . import photo_import  # noqa: E402,F401 — registers /admin/import/photos/* routes
 from . import assign_positions  # noqa: E402,F401 — registers /admin/assign-positions routes
 from . import assign_clubs  # noqa: E402,F401 — registers /admin/assign-clubs routes
+from . import club_aliases  # noqa: E402,F401 — registers /admin/club-aliases routes
 
 
 @bp.route('/deleted-evaluations')

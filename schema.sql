@@ -438,6 +438,24 @@ CREATE INDEX IF NOT EXISTS idx_wyscout_competition ON wyscout_match_stats(compet
 CREATE INDEX IF NOT EXISTS idx_wyscout_match_id    ON wyscout_match_stats(match_id);
 CREATE INDEX IF NOT EXISTS idx_wyscout_match_stats_season ON wyscout_match_stats(season);  -- Phase 4.2
 
+-- =============================================================
+-- 7b. CLUB ALIASES (match-team string → canonical club mapping)
+-- =============================================================
+-- Maps raw wyscout match-team strings ("Al Hadd", "Muharraq") to canonical
+-- clubs. Fuzzy/normalization matching is ruled out (Al Hadd → Al-Hidd cannot
+-- be inferred). The alias table is the explicit, admin-maintained source of
+-- truth. Resolution: LOWER(alias_text) = LOWER(input) — never guesses.
+CREATE TABLE IF NOT EXISTS club_aliases (
+    id          SERIAL PRIMARY KEY,
+    club_id     INTEGER NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
+    alias_text  TEXT    NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- Case-insensitive uniqueness: one match-string → exactly one club.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_club_aliases_alias_lower
+    ON club_aliases (LOWER(alias_text));
+CREATE INDEX IF NOT EXISTS idx_club_aliases_club
+    ON club_aliases (club_id);
 
 -- =============================================================
 -- 8. AI ARTIFACTS (Gemini outputs cached for re-use)
