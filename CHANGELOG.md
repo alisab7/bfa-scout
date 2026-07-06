@@ -1,5 +1,35 @@
 # Changelog
 
+## v1.9.5 — Draft evaluations: persist correctly + resume from profile (private to author) (2026-07-06)
+
+**Diagnosis**: drafts already persisted (all three helpers commit explicitly). The real bugs were:
+
+1. **Incomplete draft blocked** — the draft-save path enforced `position_played_id` as required
+   even for `action=save_draft`. Fixed: this check now only applies for `action=submit`.
+   Drafts are explicitly allowed to be incomplete. (`app/evaluations/__init__.py`)
+
+2. **No "Resume draft" affordance** — the player profile had no way to surface an in-progress
+   draft back to its author. Fixed: `player_profile` route now calls `get_own_draft_for_player`
+   (new helper) and passes `own_draft` to the profile template. When a draft exists, the header
+   "New Evaluation" button becomes "Resume Draft", and a banner appears in the Evaluations section.
+   (`app/players/__init__.py`, `app/templates/players/profile.html`)
+
+3. **Draft privacy gap** — `get_evaluation()` applied NT-visibility filtering but not
+   author-only filtering for drafts. A user who guessed an eval_id could view another user's
+   draft. Fixed: `get_evaluation()` now accepts `requesting_user_id`; when provided, adds
+   `AND (e.status != 'draft' OR e.evaluator_id = <user_id>)` at query level. Both page-load
+   routes (`view`, `update_draft`) pass `requesting_user_id=current_user.id`.
+   Non-author draft requests return 404 (same shape as not-found). (`app/evaluations/helpers.py`,
+   `app/evaluations/__init__.py`)
+
+**New helper**: `get_own_draft_for_player(player_id, user_id)` — author-only draft lookup for the
+profile affordance. (`app/evaluations/helpers.py`)
+
+**Files**: `app/evaluations/helpers.py`, `app/evaluations/__init__.py`,
+`app/players/__init__.py`, `app/templates/players/profile.html`
+
+---
+
 ## v1.9.4 — Sort match lists recent-first with NULLS LAST (2026-07-04)
 
 Both match-date queries now use `ORDER BY match_date DESC NULLS LAST` instead of

@@ -32,6 +32,7 @@ from app.evaluations.helpers import (
     get_form_criteria,
     get_recent_matches,
     get_or_create_draft,
+    get_own_draft_for_player,
     get_evaluation,
     get_evaluation_scores,
     save_evaluation_scores,
@@ -194,10 +195,9 @@ def _handle_form_post(player, pos_group_id):
                             errors={"match_id": "Match is required."},
                             form_values=form)
 
-    # Position played in this match is required (mirrors the match rule).
-    # The dropdown defaults to the player's primary position, so this only
-    # trips if it was actively cleared.
-    if not meta.get("position_played_id"):
+    # Position played is only required on submit (not on save_draft).
+    # Drafts are explicitly allowed to be incomplete.
+    if action == "submit" and not meta.get("position_played_id"):
         flash("Please select the position the player played in this match.", "error")
         return _render_form(player, pos_group_id,
                             errors={"position_played_id": "Position played is required."},
@@ -243,7 +243,8 @@ def view(eval_id):
     # `get_evaluation` returns None for scout-viewing-NT, same shape
     # as not-found — so a scout cannot probe for the existence of an
     # NT eval via 200 vs 404.
-    ev = get_evaluation(eval_id, requesting_user_role=current_user.role)
+    ev = get_evaluation(eval_id, requesting_user_role=current_user.role,
+                        requesting_user_id=current_user.id)
     if not ev:
         abort(404)
 
@@ -269,7 +270,10 @@ def update_draft(eval_id):
     # Phase 7: defense in depth. evaluator_id check below already
     # prevents a scout from updating an nt_staff draft (different
     # owners), but threading the role keeps the policy uniform.
-    ev = get_evaluation(eval_id, requesting_user_role=current_user.role)
+    # Draft privacy: requesting_user_id filters out other users' drafts at
+    # query level — returns None (404) instead of leaking the draft exists.
+    ev = get_evaluation(eval_id, requesting_user_role=current_user.role,
+                        requesting_user_id=current_user.id)
     if not ev:
         abort(404)
     if ev["evaluator_id"] != current_user.id:

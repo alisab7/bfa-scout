@@ -5,6 +5,7 @@ Phase 5c-1 scope:
   - get_form_criteria(position_group_id) → list of criteria + category info
   - get_recent_matches(limit) → match dropdown source
   - get_or_create_draft(player_id, match_id, scout_id) → reuse-or-create
+  - get_own_draft_for_player(player_id, user_id) → author-only draft lookup
   - get_evaluation(eval_id) → full evaluation row
   - get_evaluation_scores(eval_id) → {criterion_id: {score, is_NA}} prefill
   - save_evaluation_scores(eval_id, scores) → DELETE-then-INSERT (5c-1.1)
@@ -278,8 +279,38 @@ def get_or_create_draft(player_id: int, match_id: int, scout_id: int,
         _putconn(conn)
 
 
+def get_own_draft_for_player(player_id: int, user_id: int) -> dict | None:
+    """
+    Returns the most-recently-updated non-deleted draft owned by `user_id`
+    for `player_id`, or None.  Used by the player profile to surface the
+    "Resume draft" affordance — strictly author-only, never crosses users.
+    """
+    conn = _conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, player_id, evaluator_id, match_id,
+                       position_group_id, updated_at, created_at
+                FROM   evaluations
+                WHERE  player_id    = %s
+                  AND  evaluator_id = %s
+                  AND  status       = 'draft'
+                  AND  deleted_at IS NULL
+                ORDER  BY updated_at DESC NULLS LAST, id DESC
+                LIMIT  1
+                """,
+                (player_id, user_id)
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
+    finally:
+        _putconn(conn)
+
+
 def get_evaluation(eval_id: int, include_deleted: bool = False,
-                   requesting_user_role: str | None = None) -> dict | None:
+                   requesting_user_role: str | None = None,
+                   requesting_user_id: int | None = None) -> dict | None:
     """
     Single evaluation row joined to player and match for context.
 
@@ -289,6 +320,13 @@ def get_evaluation(eval_id: int, include_deleted: bool = False,
     NT VISIBILITY INVARIANT (Phase 7): when requesting_user_role='scout',
     NT-staff-created evaluations return None (same shape as not-found,
     so a scout cannot probe for the existence of an NT eval by id).
+
+    DRAFT PRIVACY INVARIANT: when requesting_user_id is provided, draft
+    evaluations are only returned to their own author (evaluator_id must
+    match). Non-author requests return None — same 404 shape as not-found,
+    so callers cannot probe for the existence of someone else's draft.
+    Pass requesting_user_id=current_user.id on all page-load routes.
+    Admin/recovery flows may omit it (None = no draft filter).
     """
     conn = _conn()
     try:
@@ -315,10 +353,14 @@ def get_evaluation(eval_id: int, include_deleted: bool = False,
                 LEFT JOIN positions pp ON pp.id = e.position_played_id
                 WHERE  e.id = %s
             """
+            params: list = [eval_id]
             if not include_deleted:
                 sql += " AND e.deleted_at IS NULL"
             sql += _nt_visibility_clause(requesting_user_role)
-            cur.execute(sql, (eval_id,))
+            if requesting_user_id is not None:
+                sql += " AND (e.status != 'draft' OR e.evaluator_id = %s)"
+                params.append(requesting_user_id)
+            cur.execute(sql, params)
             row = cur.fetchone()
         return dict(row) if row else None
     finally:

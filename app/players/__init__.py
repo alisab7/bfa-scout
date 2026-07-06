@@ -473,9 +473,16 @@ def player_profile(player_id):
 
     # Phase 5c-3: bio counts (filters soft-deleted evaluations)
     # Phase 7: NT-staff evals excluded from the count for scout viewers.
-    from app.evaluations.helpers import get_player_bio_counts
+    from app.evaluations.helpers import get_player_bio_counts, get_own_draft_for_player
     bio_counts = get_player_bio_counts(player_id,
                                        requesting_user_role=current_user.role)
+
+    # Draft resume: users who can evaluate may have a private in-progress
+    # draft for this player.  None for roles that can't evaluate (viewer).
+    own_draft = None
+    if current_user.role in ('admin', 'technical_director', 'scout',
+                              'nt_staff', 'youth_nt'):
+        own_draft = get_own_draft_for_player(player_id, current_user.id)
 
     # Youth shortlist state (drives the profile toggle for admin/TD/nt_staff).
     from app.youth.helpers import get_shortlist_entry
@@ -483,6 +490,7 @@ def player_profile(player_id):
 
     return render_template('players/profile.html', player=player, age=_age,
                            bio_counts=bio_counts,
+                           own_draft=own_draft,
                            shortlist_entry=shortlist_entry)
 
 
