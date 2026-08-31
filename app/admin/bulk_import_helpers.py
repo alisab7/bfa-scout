@@ -44,6 +44,7 @@ ACCEPTED_COLUMNS = (
     'dominant_foot',           # → players.foot in the DB
     'height_cm',
     'weight_kg',
+    'notes',                   # → players.notes (free text, optional)
 )
 
 VALID_NATIONALITY_STATUSES = (
@@ -295,7 +296,14 @@ def find_duplicate(fields: dict) -> int | None:
       2. Else if `full_name` + `dob` + `primary_position_code` all set:
          exact case-insensitive name match, exact DOB match, and exact
          (case-insensitive) position-code match. Active players only.
-      3. Else: return None (insufficient info to dedupe).
+      3. Else if `full_name` + `dob` set (no position code — e.g. a
+         registry file imported before positions are assigned): exact
+         case-insensitive name match + exact DOB match. Active only.
+      4. Else if ONLY `full_name` is set (no id, no dob, no position):
+         exact case-insensitive name match against active players whose
+         dob IS NULL — catches re-imports of id-less/dob-less rows
+         without ever matching a same-named player who has a real DOB.
+      5. Else: return None (insufficient info to dedupe).
     """
     conn = get_db()
     with conn.cursor() as cur:
@@ -329,6 +337,48 @@ def find_duplicate(fields: dict) -> int | None:
                 LIMIT 1
                 """,
                 (name, d, pos)
+            )
+            r = cur.fetchone()
+            return r['id'] if r else None
+
+        # Strategy 3: name + dob, position not supplied (files imported
+        # before positions are assigned — e.g. the 26/27 residents
+        # registry). Exact name + exact DOB is the same evidence bar as
+        # strategy 2 minus the position, which the file simply lacks.
+        if name and raw_dob and not pos:
+            try:
+                d = _parse_date_field(raw_dob)
+            except ValueError:
+                return None
+            if not d:
+                return None
+            cur.execute(
+                """
+                SELECT id FROM players
+                WHERE  LOWER(BTRIM(full_name)) = LOWER(BTRIM(%s))
+                  AND  dob = %s
+                  AND  is_active = TRUE
+                LIMIT 1
+                """,
+                (name, d)
+            )
+            r = cur.fetchone()
+            return r['id'] if r else None
+
+        # Strategy 4: name only — the row has NO id, NO dob, NO position
+        # (registry rows awaiting a BFA ID). Only match a player whose
+        # dob IS NULL too, so a same-named player with a real DOB is
+        # never silently swallowed. Keeps re-imports idempotent.
+        if name and not raw_dob and not pos:
+            cur.execute(
+                """
+                SELECT id FROM players
+                WHERE  LOWER(BTRIM(full_name)) = LOWER(BTRIM(%s))
+                  AND  dob IS NULL
+                  AND  is_active = TRUE
+                LIMIT 1
+                """,
+                (name,)
             )
             r = cur.fetchone()
             return r['id'] if r else None
@@ -502,4 +552,5 @@ def build_db_params(conn, fields: dict) -> dict:
         'foot':                         ((fields.get('dominant_foot') or '').strip().lower() or None),
         'height_cm':                    _maybe_int(fields.get('height_cm')),
         'weight_kg':                    _maybe_int(fields.get('weight_kg')),
+        'notes':                        (fields.get('notes') or '').strip() or None,
     }

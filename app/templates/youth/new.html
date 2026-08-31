@@ -37,7 +37,7 @@
 
     <div>
       <label class="block text-sm font-medium mb-1" style="color:var(--text-muted);">
-        National ID <span style="color:var(--brand);">*</span>
+        National / BFA ID <span style="color:var(--brand);">*</span>
       </label>
       <input type="text" name="national_id" value="{{ form.get('national_id', '') }}" class="w-full" required>
       {% if errors.national_id %}<p class="text-xs mt-1" style="color:var(--brand);">{{ errors.national_id }}</p>{% endif %}

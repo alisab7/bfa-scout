@@ -1,5 +1,67 @@
 # Changelog
 
+## v1.9.6 — 26/27 residents intake: Report.xlsx → Phase-9 bulk import + gap-list (2026-08-31)
+
+Imports the 88 wanted resident/passport players from the 112-row management file
+(`Report.xlsx`, sheet "Main") through the EXISTING Phase-9 bulk importer — no parallel
+import path. Honest import: blanks stay blank, no invented dates or origins.
+
+**Whole-row highlight exclusion (24 rows NOT imported)** — the source file marks players
+not wanted this season by filling the whole row yellow (`FFFFFF00`) or red (`FFFF0000`).
+The transform reads the workbook WITH styles (openpyxl, NOT `data_only`) and excludes any
+data row with ≥7 solid-filled cells of one of those colors across the 10 columns (a single
+highlighted cell is a column note — the player is kept). Result: 21 yellow + 3 red = 24
+excluded / 88 kept, hard-cross-checked in the script against the ratified 24-BFA-ID
+exclusion list — any disagreement aborts before writing anything. The 4 withdrawn (سحب)
+rows are all inside the excluded 24.
+
+1. **Transform script** (`scripts/transform_report_residents.py`) — deterministic file-level
+   mapping only (no DB access): English full name from First+Family; `BFA ID Number` →
+   `national_id` (the 4 placeholder-"New" rows stay blank + gap-listed); DOB from datetime
+   cells and DD/MM/YYYY strings (2 blanks kept blank); Arabic club → `current_club_name`
+   via an exact 16-entry ratified table (strips U+200E; unmapped = hard failure, NO fuzzy
+   matching); `Tumooh Feedback == 'لديه الجواز'` → `nationality_status='bahraini'` (passport
+   holder, origin PENDING), everything else → `'foreign_residency'`;
+   `bahrain_residency_start_date`/`origin_country`/position NEVER set. Years bucket +
+   Tumooh feedback + source Comment land in `players.notes`, labelled as management's
+   interim estimate (NOT an entry date). Outputs `exports/residents_2627_import.csv`
+   (feed to /admin/players/bulk-import) + `exports/residents_2627_gap_list.csv`
+   (88 need entry date; the 44 passport holders need origin; flags for missing
+   BFA ID ×4, missing DOB ×2, blank nationality ×1). `exports/` is git-ignored
+   (generated, derived from a management source file).
+
+2. **Bulk importer extensions** (`app/admin/bulk_import_helpers.py`) — additive:
+   `notes` joins `ACCEPTED_COLUMNS`/`build_db_params`; `find_duplicate` gains two
+   tightly-gated fallbacks for id-less rows (name+DOB when no position code is supplied;
+   name-only matching ONLY a dob-IS-NULL player when the row has no id/dob/position) so
+   re-importing the registry stays idempotent. Existing strategies untouched.
+
+3. **Relabel (display only)** — the `national_id` field now shows as "National / BFA ID"
+   in the player new/edit forms, profile, youth form, passport view, assign-clubs table,
+   and the two validation messages. Column name unchanged.
+
+4. **E2E** (`migrations/_e2e_residents_2627_import.py`) — real HTTP on :5057 (no
+   flask.test_client): seeded-duplicate never overwritten (skip default); real import
+   verifies 88 rows / 44 bahraini + 44 foreign_residency / all 24 excluded BFA IDs absent /
+   0 unmapped clubs / NULL origin+residency date+position / notes labelling / relabel
+   rendered; idempotent re-run creates 0 rows; eligibility surfaces render gracefully with
+   NULL dates. Relabel coverage extends to `/admin/assign-clubs` (seeds one club-less row
+   so the table header renders, then deletes it), the youth intake form and the passport
+   PDF text layer; eligibility cases assert `compute_eligibility_status`' own return value
+   alongside the rendered page, so a pending player can never be papered over as
+   "Eligible now". 51 checks, all passing.
+
+5. **Phase-9 suite hardened** (`migrations/_e2e_phase_9.py`) — the duplicate-detection
+   cases needed a player carrying DOB + position + national_id and simply looked one up in
+   the DB, which crashed (`NoneType`) once the DB held only registry rows with NULL
+   positions. It now seeds that fixture itself when none exists and registers it for the
+   existing `finally:` cleanup, so the suite is self-contained and leaves the DB untouched.
+
+**Files**: `scripts/transform_report_residents.py`, `app/admin/bulk_import_helpers.py`,
+`migrations/_e2e_residents_2627_import.py`, `migrations/_e2e_phase_9.py`,
+`app/players/__init__.py`, `app/youth/__init__.py`, player/admin/passport templates,
+`.gitignore`
+
 ## v1.9.5 — Draft evaluations: persist correctly + resume from profile (private to author) (2026-07-06)
 
 **Diagnosis**: drafts already persisted (all three helpers commit explicitly). The real bugs were:

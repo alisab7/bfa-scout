@@ -179,6 +179,36 @@ with db() as conn, conn.cursor() as cur:
                      AND pl.national_id IS NOT NULL
                    ORDER BY pl.id LIMIT 1""")
     arthur = cur.fetchone()       # name kept for diff-stability; it's actually Bouhra
+
+# The suite must not depend on the DB happening to hold a fully
+# populated player. After a registry-style import (e.g. the 26/27
+# residents file) every row has a NULL position, so the lookup above
+# finds nothing. Seed our own fixture in that case and register it for
+# the `finally:` cleanup, so the run leaves the DB exactly as it found
+# it — no hand-seeded row survives the suite.
+if arthur is None:
+    with db() as conn, conn.cursor() as cur:
+        cur.execute("""
+            INSERT INTO players (full_name, national_id, dob,
+                                 primary_position_id, is_active)
+            SELECT 'E2E P9 FIXTURE PLAYER', %s, DATE '1995-05-05',
+                   p.id, TRUE
+            FROM positions p ORDER BY p.id LIMIT 1
+            RETURNING id
+        """, (f"E2EP9{os.getpid()}"[:32],))
+        fixture_id = cur.fetchone()['id']
+        conn.commit()
+    INSERTED_PLAYER_IDS.append(fixture_id)
+    with db() as conn, conn.cursor() as cur:
+        cur.execute("""SELECT pl.id, pl.full_name, pl.national_id, pl.dob,
+                              pl.primary_position_id, p.code AS pos_code
+                       FROM players pl
+                       JOIN positions p ON p.id = pl.primary_position_id
+                       WHERE pl.id = %s""", (fixture_id,))
+        arthur = cur.fetchone()
+    print("  (no fully-populated player in DB — seeded a throwaway "
+          "fixture; it is deleted in cleanup)")
+
 arthur_pos_code = arthur['pos_code']
 print(f"  fixture player: id={arthur['id']} ({arthur['full_name']!r}), "
       f"national_id={arthur['national_id']}, dob={arthur['dob']}, "

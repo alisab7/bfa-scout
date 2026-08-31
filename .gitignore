@@ -50,3 +50,6 @@ bfa_scout_ed25519.pub
 *_ed25519.pub
 
 sample_data/
+
+# Generated import/gap-list CSVs (derived from management source files)
+exports/

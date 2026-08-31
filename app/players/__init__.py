@@ -316,13 +316,13 @@ def new_player():
             errors['full_name'] = 'Full name (English) is required.'
 
         if not national_id:
-            errors['national_id'] = 'National ID is required.'
+            errors['national_id'] = 'National / BFA ID is required.'
         elif 'national_id' not in errors:
             conn = get_db()
             with conn.cursor() as cur:
                 cur.execute('SELECT id FROM players WHERE national_id = %s', (national_id,))
                 if cur.fetchone():
-                    errors['national_id'] = 'A player with this National ID already exists.'
+                    errors['national_id'] = 'A player with this National / BFA ID already exists.'
 
         dob = None
         if dob_str:
@@ -633,7 +633,7 @@ def edit_player(player_id):
             errors['full_name'] = 'Full name (English) is required.'
 
         if not national_id:
-            errors['national_id'] = 'National ID is required.'
+            errors['national_id'] = 'National / BFA ID is required.'
         elif 'national_id' not in errors:
             with conn.cursor() as cur:
                 cur.execute(
@@ -641,7 +641,7 @@ def edit_player(player_id):
                     (national_id, player_id)
                 )
                 if cur.fetchone():
-                    errors['national_id'] = 'A player with this National ID already exists.'
+                    errors['national_id'] = 'A player with this National / BFA ID already exists.'
 
         dob = None
         if dob_str:

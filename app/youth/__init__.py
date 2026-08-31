@@ -145,13 +145,13 @@ def new_youth(slug):
             errors['full_name'] = 'Full name (English) is required.'
 
         if not national_id:
-            errors['national_id'] = 'National ID is required.'
+            errors['national_id'] = 'National / BFA ID is required.'
         else:
             conn = get_db()
             with conn.cursor() as cur:
                 cur.execute('SELECT id FROM players WHERE national_id = %s', (national_id,))
                 if cur.fetchone():
-                    errors['national_id'] = 'A player with this National ID already exists.'
+                    errors['national_id'] = 'A player with this National / BFA ID already exists.'
 
         dob = None
         if dob_str:
