@@ -434,22 +434,46 @@ fi
 echo "SHIP_HEALTH_BODY=$BODY"
 
 # ------------------------------------------------------- f. SHA VERIFICATION
-LIVE_SHA="$(printf '%s' "$BODY" | sed -n 's/.*"sha"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+# The drain above breaks as soon as SOMETHING answers status=ok — and during
+# a force-recreate that something can still be the OLD container. So the SHA
+# is polled in its own loop rather than read from that first response: a
+# correct deploy simply needs a few more seconds for the new container to
+# come up behind nginx. Only a SHA that is still absent or wrong after every
+# retry is a real failure.
+echo "--- [f] Verifying live SHA (max $TRIES tries) ---"
+LIVE_SHA=""
+SHA_OK=0
+i=0
+while [ "$i" -lt "$TRIES" ]; do
+    i=$((i + 1))
+    SHA_BODY="$(curl -fsS -k --max-time 10 "$HEALTH_URL" 2>/dev/null || true)"
+    LIVE_SHA="$(printf '%s' "$SHA_BODY" | sed -n 's/.*"sha"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+    if [ -n "$SHA_BODY" ]; then BODY="$SHA_BODY"; fi
+    if [ -n "$LIVE_SHA" ] && [ "$LIVE_SHA" = "$SHORT" ]; then
+        SHA_OK=1
+        break
+    fi
+    echo "  attempt $i/$TRIES: live sha='${LIVE_SHA:-<absent>}' (want $SHORT) — still settling"
+    sleep "$SLEEP_S"
+done
+
 echo "SHIP_LIVE_SHA=$LIVE_SHA"
-if [ -z "$LIVE_SHA" ] || [ "$LIVE_SHA" = "unknown" ]; then
-    echo "FATAL: /healthz reported sha='$LIVE_SHA'."
-    echo "       The image was built without the GIT_SHA build arg, so the deploy"
-    echo "       CANNOT be verified. Treat production as unverified."
+if [ "$SHA_OK" != "1" ]; then
+    if [ -z "$LIVE_SHA" ] || [ "$LIVE_SHA" = "unknown" ]; then
+        echo "FATAL: /healthz still reported sha='${LIVE_SHA:-<absent>}' after $TRIES tries."
+        echo "       The image was built without the GIT_SHA build arg, so the deploy"
+        echo "       CANNOT be verified. Treat production as unverified."
+    else
+        echo "FATAL: live SHA mismatch after $TRIES tries — the deploy did NOT take."
+        echo "       expected (just pushed): $SHORT"
+        echo "       live /healthz reports:  $LIVE_SHA"
+        echo "       Likely a cached build, a stale image, or the wrong branch."
+    fi
+    echo "--- last 50 lines of app logs ---"
+    $COMPOSE logs --tail=50 app 2>&1 || true
     exit 26
 fi
-if [ "$LIVE_SHA" != "$SHORT" ]; then
-    echo "FATAL: live SHA mismatch — the deploy did NOT take."
-    echo "       expected (just pushed): $SHORT"
-    echo "       live /healthz reports:  $LIVE_SHA"
-    echo "       Likely a cached build, a stale image, or the wrong branch."
-    exit 26
-fi
-echo "  live /healthz sha = $LIVE_SHA  == pushed $SHORT"
+echo "  live /healthz sha = $LIVE_SHA  == pushed $SHORT (after $i attempt(s))"
 echo "SHIP_DEPLOY=ok"
 REMOTE_DEPLOY
     then

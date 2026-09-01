@@ -100,6 +100,11 @@ sha="${MOCK_LIVE_SHA:-}"
 if [ -z "$sha" ] && [ -f "${MOCK_BUILT_SHA_FILE:-/nonexistent}" ]; then
     sha="$(cut -c1-7 < "$MOCK_BUILT_SHA_FILE")"
 fi
+# The old container can keep answering (status=ok, OLD sha) for a few
+# seconds after a force-recreate. MOCK_STALE_SHA_FIRST reproduces that.
+if [ -n "${MOCK_STALE_SHA_FIRST:-}" ] && [ "$n" -le "$MOCK_STALE_SHA_FIRST" ]; then
+    sha="${MOCK_STALE_SHA:-0ldc0de}"
+fi
 if [ "${MOCK_HEALTH_NO_SHA:-0}" = "1" ]; then
     printf '{"status":"ok"}'
 else
@@ -169,6 +174,7 @@ export NO_COLOR=1
 reset_mocks() {
     unset MOCK_BACKUP_FAIL MOCK_MIGRATION_FAIL MOCK_BUILD_FAIL \
           MOCK_HEALTH_NEVER MOCK_HEALTH_FAIL_FIRST MOCK_LIVE_SHA \
+          MOCK_STALE_SHA_FIRST MOCK_STALE_SHA \
           MOCK_HEALTH_NO_SHA MOCK_LSREMOTE_SHA 2>/dev/null || true
     rm -f "$MOCK_CURL_COUNT_FILE"
 }
@@ -287,6 +293,17 @@ check "tolerates the first couple of connection errors" 0 "$rc" "SHIPPED"
 reset_mocks; new_commit
 rc="$(MOCK_LIVE_SHA=badbad1 run_ship "stale image" -y)"
 check "STOP on live-SHA mismatch (the near-miss this tool exists for)" 1 "$rc" "the deploy did NOT take"
+
+# ── 9b. The SHA settles LATE — must ship, not abort ──────────────────────────
+# A force-recreate leaves the OLD container answering status=ok with the OLD
+# sha for a few seconds. Sampling the SHA once aborted a perfectly good
+# deploy (seen in the field); it has to be polled like the health drain.
+reset_mocks; new_commit
+rc="$(MOCK_STALE_SHA_FIRST=2 run_ship "sha settles late" -y)"
+check "SHA appears after a couple of retries -> exit 0" 0 "$rc" "SHIPPED"
+grep -q "still settling" "$OUT" \
+    && { echo "  PASS  the late-SHA retries are visible in the output"; PASS=$((PASS+1)); } \
+    || { echo "  FAIL  expected 'still settling' retry lines"; FAIL=$((FAIL+1)); }
 
 # ── 10. STOP: image predates the build arg -> unverifiable, not 'fine' ───────
 reset_mocks; new_commit
