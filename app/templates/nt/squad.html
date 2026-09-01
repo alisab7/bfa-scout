@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% from '_macros/eligibility_badge.html' import eligibility_badge %}
+
+{% block title %}National Team · First-Team Squad — BFA Scout{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 py-8">
+
+  <h1 class="text-2xl font-bold mb-1" style="color:var(--text);">
+    National Team · First-Team Squad
+  </h1>
+  <p class="text-sm mb-4" style="color:var(--text-muted);">
+    The curated first-team squad — only the players an admin has put in it.
+    Membership is an editorial decision, not a computed one: prospects who
+    are still counting toward eligibility can be in the squad, and their
+    badge says so. The squad is managed by an admin under
+    <strong>Admin Tools → First-Team Squad</strong>.
+  </p>
+
+  {# Tab strip — the three coaching tracks; First-Team Squad active. #}
+  <div class="flex gap-2 mb-6 text-sm">
+    <a href="{{ url_for('nt.index') }}"
+       class="px-3 py-1.5 rounded font-semibold"
+       style="background:var(--bg);color:var(--text-muted);border:1px solid var(--border);">
+      Citizens
+    </a>
+    <a href="{{ url_for('nt.residents') }}"
+       class="px-3 py-1.5 rounded font-semibold"
+       style="background:var(--bg);color:var(--text-muted);border:1px solid var(--border);">
+      Residents
+    </a>
+    <a href="{{ url_for('nt.first_team_squad') }}"
+       class="px-3 py-1.5 rounded font-semibold"
+       style="background:var(--brand);color:#fff;">
+      First-Team Squad
+    </a>
+  </div>
+
+  {% if members %}
+    <div class="flex items-baseline gap-2 mb-3">
+      <h2 class="text-lg font-bold" style="color:var(--text);">Squad</h2>
+      <span class="text-sm" style="color:var(--text-muted);">
+        ({{ members | length }} player{{ '' if members|length == 1 else 's' }})
+      </span>
+    </div>
+
+    <div class="rounded-xl overflow-hidden"
+         style="background:var(--surface);border:1px solid var(--border);">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr style="background:var(--bg);border-bottom:1px solid var(--border);">
+              <th class="px-4 py-3 text-left" style="color:var(--text-muted);">Player</th>
+              <th class="px-4 py-3 text-left" style="color:var(--text-muted);">Position</th>
+              <th class="px-4 py-3 text-left" style="color:var(--text-muted);">Club</th>
+              <th class="px-4 py-3 text-left" style="color:var(--text-muted);">Eligibility</th>
+              <th class="px-4 py-3 text-left" style="color:var(--text-muted);">Added</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in members %}
+              {% set pos = get_player_pos(p.primary_position_id) %}
+              <tr style="border-bottom:1px solid var(--border);">
+                <td class="px-4 py-3">
+                  <div class="flex items-center gap-3">
+                    <img src="{{ get_player_photo(p.id) }}" alt=""
+                         class="rounded-full shrink-0"
+                         style="width:36px;height:36px;object-fit:cover;background:var(--bg);border:1px solid var(--border);"
+                         onerror="this.src='{{ url_for('static', filename='photos/placeholder.svg') }}';">
+                    <div class="min-w-0">
+                      <a href="{{ url_for('players.player_profile', player_id=p.id) }}"
+                         class="font-semibold" style="color:var(--text);">{{ p.full_name }}</a>
+                      {% if p.full_name_ar %}
+                        <span class="text-xs ml-1"
+                              style="color:var(--text-muted);direction:rtl;">{{ p.full_name_ar }}</span>
+                      {% endif %}
+                      <span class="block text-xs" style="color:var(--text-muted);">
+                        {{ p.national_id or '—' }}
+                      </span>
+                    </div>
+                  </div>
+                </td>
+                <td class="px-4 py-3" style="color:var(--text);">
+                  {{ pos[0] or '—' }}
+                  {% if pos[1] %}
+                    <span class="text-xs" style="color:var(--text-muted);">({{ pos[1] }})</span>
+                  {% endif %}
+                </td>
+                <td class="px-4 py-3" style="color:var(--text);">
+                  {{ p.club_name or p.current_club or '—' }}
+                </td>
+                <td class="px-4 py-3">{{ eligibility_badge(p) }}</td>
+                <td class="px-4 py-3 text-xs"
+                    style="color:var(--text-muted);white-space:nowrap;">
+                  {{ p.added_at.strftime('%Y-%m-%d') if p.added_at else '—' }}
+                  {% if p.added_by_name %}<br>by {{ p.added_by_name }}{% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% else %}
+    <div class="rounded-xl p-6"
+         style="background:var(--surface);border:1px solid var(--border);">
+      <p class="text-sm" style="color:var(--text-muted);">
+        The first-team squad is empty. An admin picks the squad under
+        <strong>Admin Tools → First-Team Squad</strong>
+        {%- if current_user.has_role('admin') %}
+          (<a href="{{ url_for('admin.squad') }}"
+              style="color:var(--brand);font-weight:600;">open it now</a>)
+        {%- endif -%}.
+      </p>
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}

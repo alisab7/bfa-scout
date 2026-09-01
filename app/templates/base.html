@@ -132,6 +132,9 @@
                 {# admin-only tools — divider then list #}
                 {% if current_user.has_role('admin') %}
                   <div style="margin:4px 0; border-top:1px solid var(--border);"></div>
+                  <a href="{{ url_for('admin.squad') }}"
+                     class="block px-4 py-2 text-sm transition-opacity hover:opacity-80"
+                     style="color:var(--text);">First-Team Squad</a>
                   <a href="{{ url_for('admin.users_list') }}"
                      class="block px-4 py-2 text-sm transition-opacity hover:opacity-80"
                      style="color:var(--text);">Users</a>
@@ -260,6 +263,9 @@
                  style="color:var(--text);">Assign Positions</a>
               {# admin-only tools #}
               {% if current_user.has_role('admin') %}
+                <a href="{{ url_for('admin.squad') }}"
+                   class="block py-2 text-sm font-medium"
+                   style="color:var(--text);">First-Team Squad</a>
                 <a href="{{ url_for('admin.users_list') }}"
                    class="block py-2 text-sm font-medium"
                    style="color:var(--text);">Users</a>

@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+{% from '_macros/eligibility_badge.html' import eligibility_badge %}
+
+{% block title %}First-Team Squad — BFA Scout{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto px-4 py-8">
+
+  <a href="{{ url_for('nt.first_team_squad') }}"
+     class="text-sm mb-4 inline-block" style="color:var(--text-muted);">&larr; Squad view</a>
+
+  <h1 class="text-2xl font-bold mb-2" style="color:var(--text);">First-Team Squad</h1>
+  <p class="text-sm mb-6" style="color:var(--text-muted);">
+    Pick who is in the first-team squad. The coaching view
+    (<a href="{{ url_for('nt.first_team_squad') }}"
+        style="color:var(--brand);">National Team → First-Team Squad</a>)
+    shows only these players. There is <strong>no eligibility gate</strong> —
+    a prospect still counting toward eligibility is just as addable as a
+    citizen; the badge tells you which is which. Removing a player here
+    removes their <strong>squad membership only</strong> — the player record
+    is never deleted.
+  </p>
+
+  {# ── Current squad ─────────────────────────────────────────────── #}
+  <section class="mb-8">
+    <div class="flex items-baseline gap-2 mb-3">
+      <h2 class="text-lg font-bold" style="color:var(--text);">In the squad</h2>
+      <span class="text-sm" style="color:var(--text-muted);">({{ member_count }})</span>
+    </div>
+
+    {% if members %}
+      <div class="rounded-xl overflow-hidden"
+           style="background:var(--surface);border:1px solid var(--border);">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr style="background:var(--bg);border-bottom:1px solid var(--border);">
+                <th class="px-4 py-3 text-left"  style="color:var(--text-muted);">Player</th>
+                <th class="px-4 py-3 text-left"  style="color:var(--text-muted);">Position</th>
+                <th class="px-4 py-3 text-left"  style="color:var(--text-muted);">Club</th>
+                <th class="px-4 py-3 text-left"  style="color:var(--text-muted);">Eligibility</th>
+                <th class="px-4 py-3 text-right" style="color:var(--text-muted);">Remove</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in members %}
+                {% set pos = get_player_pos(p.primary_position_id) %}
+                <tr style="border-bottom:1px solid var(--border);">
+                  <td class="px-4 py-3">
+                    <div class="flex items-center gap-3">
+                      <img src="{{ get_player_photo(p.id) }}" alt=""
+                           class="w-9 h-9 rounded-full object-cover flex-shrink-0"
+                           style="border:1px solid var(--border);"
+                           onerror="this.src='{{ url_for('static', filename='photos/placeholder.svg') }}';">
+                      <span>
+                        <a href="{{ url_for('players.player_profile', player_id=p.id) }}"
+                           class="font-semibold" style="color:var(--text);">{{ p.full_name }}</a>
+                        {% if p.full_name_ar %}
+                          <span class="text-xs ml-1"
+                                style="color:var(--text-muted);direction:rtl;">{{ p.full_name_ar }}</span>
+                        {% endif %}
+                        <span class="block text-xs" style="color:var(--text-muted);">
+                          {{ p.national_id or '—' }}
+                        </span>
+                      </span>
+                    </div>
+                  </td>
+                  <td class="px-4 py-3" style="color:var(--text-muted);">{{ pos[0] or '—' }}</td>
+                  <td class="px-4 py-3" style="color:var(--text-muted);">
+                    {{ p.club_name or p.current_club or '—' }}
+                  </td>
+                  <td class="px-4 py-3">{{ eligibility_badge(p) }}</td>
+                  <td class="px-4 py-3 text-right">
+                    <form method="POST" action="{{ url_for('admin.squad_remove') }}"
+                          class="inline"
+                          onsubmit="return confirm('Remove {{ p.full_name }} from the first-team squad? The player record is kept.');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <input type="hidden" name="player_id" value="{{ p.id }}">
+                      <input type="hidden" name="q"    value="{{ q or '' }}">
+                      <input type="hidden" name="pos"  value="{{ pos_id or '' }}">
+                      <input type="hidden" name="club" value="{{ club or '' }}">
+                      <input type="hidden" name="show" value="{{ show or '' }}">
+                      <button type="submit"
+                              class="px-3 py-1 rounded text-xs font-semibold"
+                              style="background:var(--bg);color:var(--brand);border:1px solid var(--border);">
+                        Remove
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    {% else %}
+      <div class="rounded-xl p-5"
+           style="background:var(--surface);border:1px solid var(--border);">
+        <p class="text-sm" style="color:var(--text-muted);">
+          No players in the first-team squad yet. Search below, tick the
+          players who belong in it, and click <strong>Add selected to squad</strong>.
+        </p>
+      </div>
+    {% endif %}
+  </section>
+
+  {# ── Search / filter ───────────────────────────────────────────── #}
+  <section>
+    <h2 class="text-lg font-bold mb-3" style="color:var(--text);">Add players</h2>
+
+    <form method="GET" action="{{ url_for('admin.squad') }}"
+          class="flex flex-wrap items-center gap-2 mb-4">
+      <input type="search" name="q" value="{{ q or '' }}"
+             placeholder="Name or National / BFA ID…"
+             aria-label="Search players by name or National / BFA ID"
+             class="px-3 py-2 rounded text-sm flex-1 min-w-[14rem]"
+             style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+
+      <select name="pos" aria-label="Filter by position"
+              class="px-3 py-2 rounded text-sm"
+              style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+        <option value="">All positions</option>
+        {% for g in position_groups %}
+          <optgroup label="{{ g.group_name }}">
+            {% for p in g.positions %}
+              <option value="{{ p.pos_id }}"
+                      {% if pos_id == p.pos_id %}selected{% endif %}>{{ p.pos_name }}</option>
+            {% endfor %}
+          </optgroup>
+        {% endfor %}
+      </select>
+
+      <select name="club" aria-label="Filter by club"
+              class="px-3 py-2 rounded text-sm"
+              style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+        <option value="">All clubs</option>
+        <option value="other" {% if club == 'other' %}selected{% endif %}>— No club set —</option>
+        <optgroup label="Premier League">
+          {% for c in clubs_premier %}
+            <option value="{{ c.id }}"
+                    {% if club == c.id|string %}selected{% endif %}>{{ c.name }}</option>
+          {% endfor %}
+        </optgroup>
+        <optgroup label="First Division">
+          {% for c in clubs_first %}
+            <option value="{{ c.id }}"
+                    {% if club == c.id|string %}selected{% endif %}>{{ c.name }}</option>
+          {% endfor %}
+        </optgroup>
+      </select>
+
+      <select name="show" aria-label="Filter by squad membership"
+              class="px-3 py-2 rounded text-sm"
+              style="background:var(--bg);border:1px solid var(--border);color:var(--text);">
+        <option value="all" {% if show == 'all' %}selected{% endif %}>Everyone</option>
+        <option value="out" {% if show == 'out' %}selected{% endif %}>Not in squad</option>
+        <option value="in"  {% if show == 'in'  %}selected{% endif %}>In squad</option>
+      </select>
+
+      <button type="submit"
+              class="px-4 py-2 rounded text-sm font-semibold text-white"
+              style="background:var(--brand);">Search</button>
+      <a href="{{ url_for('admin.squad') }}"
+         class="px-3 py-2 rounded text-sm"
+         style="color:var(--text-muted);">Reset</a>
+    </form>
+
+    {% if candidates %}
+      {# x-data scope so the header select-all's Alpine @change binding runs
+         (same mechanic as admin/assign_clubs.html). #}
+      <form method="POST" action="{{ url_for('admin.squad_add') }}" x-data="{}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {# Carry the active filters through the POST → redirect, so the
+           admin lands back on the same filtered page after a save. #}
+        <input type="hidden" name="q"    value="{{ q or '' }}">
+        <input type="hidden" name="pos"  value="{{ pos_id or '' }}">
+        <input type="hidden" name="club" value="{{ club or '' }}">
+        <input type="hidden" name="show" value="{{ show or '' }}">
+
+        <div class="flex flex-wrap items-center gap-3 mb-4">
+          <button type="submit"
+                  class="px-5 py-2 rounded text-sm font-semibold text-white"
+                  style="background:var(--brand);">
+            Add selected to squad
+          </button>
+          <span class="text-sm" style="color:var(--text-muted);">
+            {{ candidates|length }} player{{ '' if candidates|length == 1 else 's' }} shown
+          </span>
+        </div>
+
+        <div class="rounded-xl overflow-hidden mb-4"
+             style="background:var(--surface);border:1px solid var(--border);">
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr style="background:var(--bg);border-bottom:1px solid var(--border);">
+                  <th class="px-4 py-3 text-left" style="color:var(--text-muted);">
+                    <input type="checkbox" title="Select all"
+                           @change="document.querySelectorAll('input.row-check:not(:disabled)').forEach(c => c.checked = $event.target.checked)">
+                  </th>
+                  <th class="px-4 py-3 text-left" style="color:var(--text-muted);">Player</th>
+                  <th class="px-4 py-3 text-left" style="color:var(--text-muted);">Position</th>
+                  <th class="px-4 py-3 text-left" style="color:var(--text-muted);">Club</th>
+                  <th class="px-4 py-3 text-left" style="color:var(--text-muted);">Eligibility</th>
+                  <th class="px-4 py-3 text-left" style="color:var(--text-muted);">Squad</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for p in candidates %}
+                  {% set pos = get_player_pos(p.primary_position_id) %}
+                  <tr style="border-bottom:1px solid var(--border);">
+                    <td class="px-4 py-3">
+                      <input type="checkbox" class="row-check" name="player_ids"
+                             value="{{ p.id }}"
+                             {% if p.in_squad %}disabled title="Already in the squad"{% endif %}>
+                    </td>
+                    <td class="px-4 py-3" style="color:var(--text);">
+                      <div class="flex items-center gap-3">
+                        <img src="{{ get_player_photo(p.id) }}" alt=""
+                             class="w-9 h-9 rounded-full object-cover flex-shrink-0"
+                             style="border:1px solid var(--border);"
+                             onerror="this.src='{{ url_for('static', filename='photos/placeholder.svg') }}';">
+                        <span>
+                          <span class="font-semibold">{{ p.full_name }}</span>
+                          {% if p.full_name_ar %}
+                            <span class="text-xs ml-1"
+                                  style="color:var(--text-muted);direction:rtl;">{{ p.full_name_ar }}</span>
+                          {% endif %}
+                          <span class="block text-xs" style="color:var(--text-muted);">
+                            {{ p.national_id or '—' }}
+                          </span>
+                        </span>
+                      </div>
+                    </td>
+                    <td class="px-4 py-3" style="color:var(--text-muted);">{{ pos[0] or '—' }}</td>
+                    <td class="px-4 py-3" style="color:var(--text-muted);">
+                      {{ p.club_name or p.current_club or '—' }}
+                    </td>
+                    <td class="px-4 py-3">{{ eligibility_badge(p) }}</td>
+                    <td class="px-4 py-3">
+                      {% if p.in_squad %}
+                        <span class="text-xs font-semibold" style="color:#22C55E;">In squad</span>
+                      {% else %}
+                        <span class="text-xs" style="color:var(--text-muted);">—</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </form>
+    {% else %}
+      <div class="rounded-xl p-5"
+           style="background:var(--surface);border:1px solid var(--border);">
+        <p class="text-sm" style="color:var(--text-muted);">
+          No active players match those filters.
+        </p>
+      </div>
+    {% endif %}
+  </section>
+
+</div>
+{% endblock %}

@@ -16,7 +16,7 @@ Coverage (16 cases per the spec, with one substitution noted below):
     5. Anonymous GET /nt             -> 302 to /auth/login
 
   Visibility tests
-    6. Setup: test scout eval + test NT eval against an existing player
+    6. Setup: test scout eval + test NT eval against a SEEDED player
     7. Scout sees scout eval, NOT NT eval on the player profile
     8. NT-staff sees BOTH with role badges in rendered HTML
     9. Admin sees BOTH with role badges
@@ -24,7 +24,7 @@ Coverage (16 cases per the spec, with one substitution noted below):
    11. NT-staff call to same INCLUDES NT
 
   Squad list
-   12. /nt page shows BPL-eligible players (Bouhra, Arthur)
+   12. /nt page shows BPL-eligible players (the seeded eligible player)
    13. /nt page does NOT show foreign_other / not_eligible players
 
   Audit invariant
@@ -35,7 +35,11 @@ Coverage (16 cases per the spec, with one substitution noted below):
    16. (Run as separate calls after this script — kept off this script's
         success path so a regression failure doesn't mask a 7-specific bug)
 
-Test fixtures are inserted and ALWAYS restored in a `finally:` block.
+Every fixture this suite needs — users, players, a match and the
+evaluations — is seeded by the suite itself and removed in the `finally:`
+block. Nothing is read out of ambient DB state, so a data import or reset
+can't turn a real assertion failure into a setup crash. The `try:` opens
+before the first mutation so a failure during setup cleans up too.
 The DB column `users_role_check` validates we can create nt_staff users
 (throwaway-namespace verify already covered that on `schema.sql`; this
 hits the live DB).
@@ -125,87 +129,136 @@ SCOUT_PW    = f"e2e-scout-pw-{os.getpid()}"
 VIEWER_EMAIL = f"e2e-viewer-{os.getpid()}@bfa.bh"
 VIEWER_PW    = f"e2e-viewer-pw-{os.getpid()}"
 
-INSERTED_USER_IDS:  list[int] = []
-INSERTED_EVAL_IDS:  list[int] = []
+PID = os.getpid()
+# Seeded players. The eval player is a born citizen (bahraini, no origin
+# country) so the /nt BPL-eligible squad query picks him up (case 12).
+EVAL_PLAYER_NAME     = f"E2E P7 Eligible {PID}"
+NOT_ELIG_PLAYER_NAME = f"E2E P7 Flipped {PID}"
+PLAYER_NID_PREFIX    = f"E2EP7{PID}"
+
+INSERTED_USER_IDS:   list[int] = []
+INSERTED_EVAL_IDS:   list[int] = []
 INSERTED_PLAYER_IDS: list[int] = []
-
-with db() as conn, conn.cursor() as cur:
-    # 3 throwaway users at the 3 roles we exercise
-    for email, pw, name, role in [
-        (NT_EMAIL,     NT_PW,     NT_NAME,           'nt_staff'),
-        (SCOUT_EMAIL,  SCOUT_PW,  'E2E Test Scout',  'scout'),
-        (VIEWER_EMAIL, VIEWER_PW, 'E2E Test Viewer', 'viewer'),
-    ]:
-        cur.execute("""
-            INSERT INTO users (email, password_hash, full_name, role, is_active)
-            VALUES (%s, %s, %s, %s, TRUE)
-            RETURNING id
-        """, (email, generate_password_hash(pw, method='pbkdf2:sha256:600000'),
-              name, role))
-        INSERTED_USER_IDS.append(cur.fetchone()['id'])
-    conn.commit()
-
-    # Pick an existing active player for the eval tests (Arthur=2)
-    cur.execute("SELECT id, primary_position_id FROM players WHERE id=2")
-    p_arthur = cur.fetchone()
-    pos_group_id = None
-    if p_arthur and p_arthur['primary_position_id']:
-        cur.execute("SELECT position_group_id FROM positions WHERE id=%s",
-                    (p_arthur['primary_position_id'],))
-        r = cur.fetchone()
-        pos_group_id = r['position_group_id'] if r else None
-    # Fall back to first position group if Arthur has no position
-    if not pos_group_id:
-        cur.execute("SELECT id FROM position_groups ORDER BY id LIMIT 1")
-        pos_group_id = cur.fetchone()['id']
-
-    nt_user_id    = INSERTED_USER_IDS[0]
-    scout_user_id = INSERTED_USER_IDS[1]
-
-    # Insert one scout-authored eval + one nt-authored eval against Arthur
-    for evaluator_id, role in [(scout_user_id, 'scout'),
-                                (nt_user_id,    'nt_staff')]:
-        cur.execute("""
-            INSERT INTO evaluations
-                (player_id, evaluator_id, position_group_id, status,
-                 created_by_role, summary, nt_readiness_level, recommendation,
-                 submitted_at)
-            VALUES (%s, %s, %s, 'submitted', %s,
-                    %s, 'senior', 'monitor', NOW())
-            RETURNING id
-        """, (p_arthur['id'], evaluator_id, pos_group_id, role,
-              f"E2E test eval ({role})"))
-        INSERTED_EVAL_IDS.append(cur.fetchone()['id'])
-    conn.commit()
-    scout_eval_id, nt_eval_id = INSERTED_EVAL_IDS
-
-# Now also need a "not eligible" player for case 13. Try to find one
-# in the DB; if none, create a temporary one.
-with db() as conn, conn.cursor() as cur:
-    cur.execute("""
-        SELECT id, full_name FROM players
-        WHERE  is_active = TRUE AND nationality_status = 'not_eligible'
-        LIMIT 1
-    """)
-    not_elig_player = cur.fetchone()
-    if not not_elig_player:
-        # Look for any active player without an eligibility status, mutate
-        # temporarily so the squad-query exclusion is exercised. We snapshot
-        # nationality_status and restore in finally.
-        cur.execute("""
-            SELECT id, full_name, nationality_status FROM players
-            WHERE  is_active = TRUE AND nationality_status IS NULL
-            LIMIT 1
-        """)
-        not_elig_player = cur.fetchone()
-    not_elig_player_prior_status = (not_elig_player or {}).get('nationality_status')
-
-print(f"  nt_user_id={nt_user_id}, scout_user_id={scout_user_id}")
-print(f"  scout_eval_id={scout_eval_id}, nt_eval_id={nt_eval_id}")
-print(f"  not_elig_player={(not_elig_player or {}).get('full_name')!r}")
+INSERTED_MATCH_IDS:  list[int] = []
 
 
+def cleanup():
+    """Remove every fixture this suite creates. Safe to call twice."""
+    with db() as conn, conn.cursor() as cur:
+        if INSERTED_PLAYER_IDS:
+            cur.execute("DELETE FROM evaluation_scores WHERE evaluation_id IN "
+                        "(SELECT id FROM evaluations WHERE player_id = ANY(%s))",
+                        (INSERTED_PLAYER_IDS,))
+            cur.execute("DELETE FROM evaluations WHERE player_id = ANY(%s)",
+                        (INSERTED_PLAYER_IDS,))
+        if INSERTED_EVAL_IDS:
+            cur.execute("DELETE FROM evaluation_scores WHERE evaluation_id = ANY(%s)",
+                        (INSERTED_EVAL_IDS,))
+            cur.execute("DELETE FROM evaluations WHERE id = ANY(%s)",
+                        (INSERTED_EVAL_IDS,))
+        if INSERTED_PLAYER_IDS:
+            cur.execute("DELETE FROM audit_log WHERE entity_type='player' "
+                        "AND entity_id = ANY(%s)", (INSERTED_PLAYER_IDS,))
+            cur.execute("DELETE FROM players WHERE id = ANY(%s)",
+                        (INSERTED_PLAYER_IDS,))
+        if INSERTED_MATCH_IDS:
+            cur.execute("DELETE FROM matches WHERE id = ANY(%s)",
+                        (INSERTED_MATCH_IDS,))
+        if INSERTED_USER_IDS:
+            cur.execute("DELETE FROM users WHERE id = ANY(%s)",
+                        (INSERTED_USER_IDS,))
+        conn.commit()
+
+# The `try:` opens BEFORE the first mutation, so a failure during setup is
+# still cleaned up rather than leaking fixture rows.
 try:
+    with db() as conn, conn.cursor() as cur:
+        # 3 throwaway users at the 3 roles we exercise
+        for email, pw, name, role in [
+            (NT_EMAIL,     NT_PW,     NT_NAME,           'nt_staff'),
+            (SCOUT_EMAIL,  SCOUT_PW,  'E2E Test Scout',  'scout'),
+            (VIEWER_EMAIL, VIEWER_PW, 'E2E Test Viewer', 'viewer'),
+        ]:
+            cur.execute("""
+                INSERT INTO users (email, password_hash, full_name, role, is_active)
+                VALUES (%s, %s, %s, %s, TRUE)
+                RETURNING id
+            """, (email, generate_password_hash(pw, method='pbkdf2:sha256:600000'),
+                  name, role))
+            INSERTED_USER_IDS.append(cur.fetchone()['id'])
+        conn.commit()
+
+        cur.execute("SELECT id FROM users WHERE role='admin' ORDER BY id LIMIT 1")
+        admin_user_id = cur.fetchone()['id']
+
+        # A position (any) so the eval can hang off a real position group.
+        cur.execute("""SELECT p.id, p.position_group_id FROM positions p
+                       ORDER BY p.id LIMIT 1""")
+        pos = cur.fetchone()
+        position_id  = pos['id']
+        pos_group_id = pos['position_group_id']
+        if not pos_group_id:
+            cur.execute("SELECT id FROM position_groups ORDER BY id LIMIT 1")
+            pos_group_id = cur.fetchone()['id']
+
+        # Seed the players this suite evaluates. Born citizens (bahraini with
+        # no origin_country) and senior age group → both land on the /nt
+        # BPL-eligible squad, which cases 12 and 13 depend on.
+        def mk_player(name, nid_suffix):
+            cur.execute("""
+                INSERT INTO players (full_name, full_name_ar, national_id,
+                                     primary_position_id, nationality_status,
+                                     age_group, is_active, created_by)
+                VALUES (%s, %s, %s, %s, 'bahraini', 'senior', TRUE, %s)
+                RETURNING id
+            """, (name, 'لاعب', f'{PLAYER_NID_PREFIX}{nid_suffix}',
+                  position_id, admin_user_id))
+            new_id = cur.fetchone()['id']
+            INSERTED_PLAYER_IDS.append(new_id)
+            return new_id
+
+        eval_player_id  = mk_player(EVAL_PLAYER_NAME, 'A')
+        not_elig_player = {'id': mk_player(NOT_ELIG_PLAYER_NAME, 'B'),
+                           'full_name': NOT_ELIG_PLAYER_NAME}
+
+        # A match for the create-path stamping cases (14/15).
+        cur.execute("""
+            INSERT INTO matches (match_date, home_team, away_team, competition,
+                                 age_group, match_type, source, created_by)
+            VALUES (CURRENT_DATE, %s, %s, 'E2E P7 Friendly', 'senior',
+                    'friendly', 'manual', %s)
+            RETURNING id
+        """, (f'E2E P7 Home {PID}', f'E2E P7 Away {PID}', admin_user_id))
+        seeded_match_id = cur.fetchone()['id']
+        INSERTED_MATCH_IDS.append(seeded_match_id)
+        conn.commit()
+
+        nt_user_id    = INSERTED_USER_IDS[0]
+        scout_user_id = INSERTED_USER_IDS[1]
+
+        # One scout-authored eval + one nt-authored eval on the seeded player
+        for evaluator_id, role in [(scout_user_id, 'scout'),
+                                    (nt_user_id,    'nt_staff')]:
+            cur.execute("""
+                INSERT INTO evaluations
+                    (player_id, evaluator_id, position_group_id, status,
+                     created_by_role, summary, nt_readiness_level, recommendation,
+                     submitted_at)
+                VALUES (%s, %s, %s, 'submitted', %s,
+                        %s, 'senior', 'monitor', NOW())
+                RETURNING id
+            """, (eval_player_id, evaluator_id, pos_group_id, role,
+                  f"E2E test eval ({role})"))
+            INSERTED_EVAL_IDS.append(cur.fetchone()['id'])
+        conn.commit()
+        scout_eval_id, nt_eval_id = INSERTED_EVAL_IDS
+
+    print(f"  nt_user_id={nt_user_id}, scout_user_id={scout_user_id}")
+    print(f"  eval_player_id={eval_player_id} ({EVAL_PLAYER_NAME!r})")
+    print(f"  scout_eval_id={scout_eval_id}, nt_eval_id={nt_eval_id}")
+    print(f"  seeded_match_id={seeded_match_id}")
+    print(f"  not_elig_player={not_elig_player['full_name']!r}")
+
     # ─── Permission tests ─────────────────────────────────────
     print("\n=== Permission tests on /nt ===")
 

@@ -28,6 +28,15 @@
        style="background:var(--brand);color:#fff;">
       Residents
     </a>
+    {# The curated squad is admin/TD/nt_staff only — scouts see /nt/residents
+       but not this tab (the route 403s them). #}
+    {% if current_user.has_role('admin', 'technical_director', 'nt_staff') %}
+      <a href="{{ url_for('nt.first_team_squad') }}"
+         class="px-3 py-1.5 rounded font-semibold"
+         style="background:var(--bg);color:var(--text-muted);border:1px solid var(--border);">
+        First-Team Squad
+      </a>
+    {% endif %}
   </div>
 
   {# ── Eligible Now ─────────────────────────────────────────────── #}

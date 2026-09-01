@@ -517,6 +517,26 @@ CREATE INDEX IF NOT EXISTS idx_youth_shortlist_player ON youth_shortlist(player_
 
 
 -- =============================================================
+-- First-team squad — admin-curated membership
+-- =============================================================
+-- One row per squad member (UNIQUE player_id → "add" is idempotent; the
+-- admin route does ON CONFLICT (player_id) DO NOTHING). Membership is a
+-- purely editorial decision: there is NO eligibility gate, so a
+-- still-counting resident prospect and a born citizen are equally
+-- addable. Removing a membership deletes ONLY this row — never the
+-- player. ON DELETE CASCADE means deleting a player never orphans a
+-- membership row.
+CREATE TABLE IF NOT EXISTS squad_members (
+    id          SERIAL PRIMARY KEY,
+    player_id   INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    added_by    INTEGER REFERENCES users(id),
+    added_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (player_id)
+);
+CREATE INDEX IF NOT EXISTS idx_squad_members_player ON squad_members(player_id);
+
+
+-- =============================================================
 -- SEED DATA
 -- =============================================================
 

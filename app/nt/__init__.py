@@ -10,8 +10,10 @@ NT-evaluation count.
 from flask import Blueprint, render_template, redirect, url_for, abort
 from flask_login import login_required, current_user
 
-from app.auth.decorators import residents_view_required
-from app.nt.helpers import get_eligible_squad_players, get_resident_players
+from app.auth.decorators import residents_view_required, admin_or_nt_staff_required
+from app.nt.helpers import (
+    get_eligible_squad_players, get_resident_players, get_squad_members,
+)
 
 
 bp = Blueprint('nt', __name__, url_prefix='/nt')
@@ -54,3 +56,28 @@ def residents():
     return render_template('nt/residents.html',
                            eligible_now=eligible_now,
                            still_counting=still_counting)
+
+
+@bp.route('/squad')
+@login_required
+@admin_or_nt_staff_required
+def first_team_squad():
+    """
+    First-Team Squad — the admin-curated roster, READ-ONLY.
+
+    Shows ONLY players in `squad_members`, so a coach opening this tab
+    sees "the squad" rather than the whole players list (which now mixes
+    established players with 88 imported prospects).
+
+    Access: admin + TD + nt_staff (`admin_or_nt_staff_required`) — the
+    same audience as the /nt Citizens tab, since this is a coaching
+    surface in the NT workspace. Scout/viewer/youth_nt get a real 403.
+    CURATION is admin-only and lives at /admin/squad.
+
+    Membership is editorial: there is NO eligibility gate. Each row
+    renders its eligibility badge via `compute_eligibility_status` for
+    context, so a still-counting prospect is visibly flagged as such
+    without being hidden.
+    """
+    members = get_squad_members()
+    return render_template('nt/squad.html', members=members)

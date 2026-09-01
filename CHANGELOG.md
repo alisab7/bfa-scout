@@ -1,5 +1,99 @@
 # Changelog
 
+## v1.10.0 — First-Team Squad: admin-curated squad table + NT squad view (2026-09-01)
+
+### What this is
+
+After the 26/27 residents intake the players list mixes established
+first-team / call-up-ready players with 88 freshly-imported prospects
+(incomplete data, still counting toward eligibility). A coach opening the
+app cannot see "the squad". This adds a manually-curated squad: an admin
+picks who is in it, and a coaching view shows only those players.
+
+Deliberately **no eligibility gate** — a still-counting `foreign_residency`
+prospect and a born citizen are equally addable. Membership is an editorial
+decision; the eligibility badge rides along for context, never as a filter.
+Removing a player from the squad removes the **membership row only** — the
+player record is never deleted.
+
+### Changes
+
+**Schema** — `squad_members(id, player_id UNIQUE FK→players ON DELETE
+CASCADE, added_by FK→users, added_at)`. Mirrors `youth_shortlist` exactly:
+`CREATE TABLE IF NOT EXISTS` + inline `UNIQUE (player_id)` (NOT the invalid
+`ADD CONSTRAINT IF NOT EXISTS`), plus an index on `player_id`. Adds use
+`INSERT … ON CONFLICT (player_id) DO NOTHING`, so adding twice never
+duplicates and never rewrites the original `added_by`/`added_at`. Migration
+`migrations/squad_members.sql` closes with a DO-block audit gate that
+RAISEs (→ ROLLBACK) if the table or the UNIQUE constraint is missing —
+without the constraint the route's `ON CONFLICT (player_id)` would fail at
+runtime.
+
+**Management screen** — `/admin/squad` (**admin only**, `admin_required` —
+tighter than assign-clubs/assign-positions, which are `admin_or_td_required`,
+because squad selection is the admin's editorial call). Bulk-select
+mechanics copied from `/admin/assign-clubs`: `name="player_ids"` checkboxes
++ a select-all header box + one submit. Because the candidate pool is now
+~88 prospects plus the existing roster, the list carries server-side
+filters: search (name EN/AR or National / BFA ID), position, club
+(including "No club set"), and a squad-membership filter
+(Everyone / Not in squad / In squad). Filters survive the POST → redirect,
+so a save lands back on the same filtered page. Already-in-squad rows show
+a disabled checkbox and an "In squad" marker. Each member has a Remove
+button (membership only, with a confirm). Explicit `conn.commit()` on every
+write; add / remove both `log_audit`'d (`player.squad_added`,
+`player.squad_removed`).
+
+**Squad view** — `/nt/squad`, a third tab in the National Team workspace
+next to Citizens and Residents (`admin_or_nt_staff_required` → admin + TD +
+nt_staff; scout / viewer / youth_nt get a real 403, and the tab is hidden
+from scouts on `/nt/residents`, the one /nt page they can see). Shows ONLY
+`squad_members` rows: photo via `get_player_photo(player_id)` with an
+`onerror` placeholder fallback, name + National / BFA ID, position via
+`get_player_pos(position_id)`, club, the shared
+`_macros/eligibility_badge.html` badge driven by
+`compute_eligibility_status`, and who added them when.
+
+**Placement rationale** — the squad view is a coaching read surface, not an
+admin tool, and its audience (admin + TD + nt_staff) is exactly the /nt
+workspace audience. It mirrors the youth shortlist, which is likewise a
+curated list surfaced as a tab inside its own section (`/youth/shortlist`)
+rather than a filter bolted onto the general players list. A "Squad only"
+filter on `/players` was rejected: `/players` excludes youth players and is
+open to viewers, so it is both too narrow (no youth call-ups) and too wide
+(wrong audience) for this list.
+
+**E2E** (`migrations/_e2e_squad.py`) — real HTTP on :5057 (no
+flask.test_client), 46 checks, all passing. Every player AND user fixture is
+seeded by the suite and torn down in `finally:` — nothing is read out of
+ambient DB state. Covers: bulk-add 3 → rows persist → all 3 render after a
+reload; remove 1 → gone from the view while the `players` row stays intact;
+idempotent re-add (COUNT stays 1, original `added_at` preserved); a
+never-added player absent from the view; no eligibility gate (a
+2-years-into-residency prospect is addable and renders its "Eligible in Xy
+Ym" counting badge; a citizen renders the Citizen badge — both cross-checked
+against `compute_eligibility_status`' own return value); auth (TD /
+nt_staff / scout / viewer / youth_nt all 403 on add and remove, with the DB
+asserted unchanged after each attempt; view 200 for admin/TD/nt_staff, 403
+for the rest); commit persistence across a fresh connection.
+
+### Files
+
+- `migrations/squad_members.sql` — table + index + audit gate (run on prod BEFORE the app restart)
+- `migrations/_apply_squad_members.py` — apply script (same semantics as the other `_apply_*.py`)
+- `migrations/_e2e_squad.py` — E2E suite
+- `app/nt/helpers.py` — `get_squad_member_ids`, `add_players_to_squad`, `remove_from_squad`, `get_squad_members`
+- `app/nt/__init__.py` — `/nt/squad` route (`first_team_squad`)
+- `app/admin/squad.py` — `/admin/squad{,/add,/remove}` routes
+- `app/admin/__init__.py` — registers the squad routes
+- `app/templates/nt/squad.html` — squad view
+- `app/templates/admin/squad.html` — management screen
+- `app/templates/nt/index.html`, `app/templates/nt/residents.html` — third tab in the strip
+- `app/templates/base.html` — "First-Team Squad" in the admin-only block of Admin Tools (desktop + mobile)
+- `schema.sql` — `squad_members` section added after `youth_shortlist`
+
+---
+
 ## v1.9.6 — 26/27 residents intake: Report.xlsx → Phase-9 bulk import + gap-list (2026-08-31)
 
 Imports the 88 wanted resident/passport players from the 112-row management file

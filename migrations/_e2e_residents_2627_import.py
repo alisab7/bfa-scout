@@ -47,7 +47,7 @@ from pathlib import Path
 from urllib.request import build_opener, HTTPCookieProcessor, Request
 from urllib.error import HTTPError
 from http.cookiejar import CookieJar
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 import psycopg2
 import psycopg2.extras
@@ -139,8 +139,30 @@ def login(email, pw):
     return op
 
 
+def _assert_local_db(dsn: str) -> None:
+    """Refuse to run anywhere but a local dev database.
+
+    This suite rebuilds from a clean slate: it runs `DELETE FROM players`,
+    and players cascade to evaluations, ai_artifacts, youth_shortlist and
+    wyscout_match_stats. Against production that is an unrecoverable data
+    loss, so the host is checked before any connection is opened. It has
+    already wiped a local table once when its input CSV was missing.
+    """
+    host = (urlparse(dsn).hostname or "").lower()
+    if host not in ("", "localhost", "127.0.0.1", "::1"):
+        sys.exit(
+            f"REFUSING TO RUN: DATABASE_URL points at '{host}', not a local "
+            "database.\nThis suite DELETEs every row in `players` (cascading "
+            "to evaluations) before reimporting.\nIt is a local-dev harness "
+            "only. To import on production, upload the CSV through "
+            "/admin/players/bulk-import and review the preview."
+        )
+
+
 def db():
-    return psycopg2.connect(os.environ["DATABASE_URL"],
+    dsn = os.environ["DATABASE_URL"]
+    _assert_local_db(dsn)
+    return psycopg2.connect(dsn,
                             cursor_factory=psycopg2.extras.RealDictCursor)
 
 

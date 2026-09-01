@@ -4,7 +4,7 @@
 #   ssh bfa@<droplet>
 #   cd /home/bfa/bfa-scout && ./scripts/deploy.sh
 #
-# Idempotent: safe to re-run. Pulls master, rebuilds the image,
+# Idempotent: safe to re-run. Pulls main, rebuilds the image,
 # recreates the stack, and gates on /healthz before declaring success.
 set -euo pipefail
 
@@ -13,8 +13,8 @@ COMPOSE="docker compose -f docker-compose.prod.yml"
 
 cd "$REPO_DIR"
 
-echo "==> [1/6] Pulling latest master"
-git pull origin master
+echo "==> [1/6] Pulling latest main"
+git pull origin main
 
 echo "==> [2/6] Sanity: required files present"
 for f in .env.production nginx/certs/origin.crt nginx/certs/origin.key; do

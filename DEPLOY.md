@@ -161,7 +161,7 @@ cd /home/bfa/bfa-scout
 ./scripts/deploy.sh
 ```
 
-`deploy.sh` pulls master, asserts `.env.production` + origin certs
+`deploy.sh` pulls main, asserts `.env.production` + origin certs
 exist, rebuilds, recreates the stack, and **fails loudly** if
 `/healthz` doesn't pass within 90s (dumping the last 50 app log lines).
 Re-runnable.

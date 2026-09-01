@@ -199,3 +199,114 @@ def get_nt_evaluation_count(player_id: int) -> int:
             (player_id,)
         )
         return int(cur.fetchone()["n"])
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# First-team squad (admin-curated membership) — flat, manually curated
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Mirrors the youth-shortlist helpers in app/youth/helpers.py: a flat
+# membership table with UNIQUE(player_id), idempotent add via ON CONFLICT,
+# explicit conn.commit() on every write (psycopg2 discipline).
+#
+# The ONE deliberate difference: there is NO eligibility (or age-group)
+# gate on who may be added. The players list now mixes established
+# first-team players with 88 freshly-imported prospects whose data is
+# incomplete; deciding who is "in the squad" is the admin's editorial
+# call, not a computed one. The eligibility badge is shown next to each
+# member for context, never as a filter.
+
+def get_squad_member_ids() -> set[int]:
+    """The set of player_ids currently in the first-team squad.
+
+    Drives the checked/`already in squad` state on /admin/squad without a
+    per-row query.
+    """
+    conn = get_db()
+    with conn.cursor() as cur:
+        cur.execute("SELECT player_id FROM squad_members")
+        return {r["player_id"] for r in cur.fetchall() or []}
+
+
+def add_players_to_squad(player_ids: list[int], user_id: int) -> list[int]:
+    """Add players to the first-team squad. Returns the ids actually inserted.
+
+    UNIQUE(player_id) + ON CONFLICT (player_id) DO NOTHING makes this
+    idempotent — re-adding a member is a no-op that neither duplicates the
+    row nor rewrites its original added_by/added_at. Only ACTIVE players
+    can be added (a stale form can't resurrect a deactivated player into
+    the squad). Explicit commit.
+    """
+    if not player_ids:
+        return []
+    conn = get_db()
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO squad_members (player_id, added_by)
+            SELECT pl.id, %s
+            FROM   players pl
+            WHERE  pl.id = ANY(%s)
+              AND  pl.is_active = TRUE
+            ON CONFLICT (player_id) DO NOTHING
+            RETURNING player_id
+            """,
+            (user_id, list(player_ids))
+        )
+        inserted = [r["player_id"] for r in cur.fetchall() or []]
+    conn.commit()
+    return inserted
+
+
+def remove_from_squad(player_id: int) -> bool:
+    """Remove ONE player from the first-team squad. Returns True if a row went.
+
+    Deletes the MEMBERSHIP ROW ONLY — the player record in `players` is
+    never touched. Explicit commit.
+    """
+    conn = get_db()
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM squad_members WHERE player_id = %s", (player_id,))
+        removed = cur.rowcount > 0
+    conn.commit()
+    return removed
+
+
+# The columns every squad SELECT must carry so the eligibility badge macro
+# can render honestly (see ELIGIBILITY_REQUIRED_COLUMNS in
+# app/players/eligibility.py — origin_country is the starved-query guard).
+_SQUAD_SELECT = """
+    SELECT pl.id, pl.full_name, pl.full_name_ar, pl.national_id,
+           pl.dob, pl.age_group, pl.current_club, pl.club_id,
+           pl.primary_position_id,
+           pl.nationality_code, pl.nationality_status,
+           pl.eligible_from_date, pl.bahrain_residency_start_date,
+           pl.origin_country, pl.origin_country_code,
+           p.code  AS position_code, p.name AS position_name,
+           pg.code AS position_group_code, pg.name_en AS position_group_name,
+           c.name  AS club_name, c.division AS club_division,
+           sm.added_at,
+           u.full_name AS added_by_name
+    FROM   squad_members sm
+    JOIN   players pl            ON pl.id = sm.player_id
+    LEFT JOIN positions p        ON p.id  = pl.primary_position_id
+    LEFT JOIN position_groups pg ON pg.id = p.position_group_id
+    LEFT JOIN clubs c            ON c.id  = pl.club_id
+    LEFT JOIN users u            ON u.id  = sm.added_by
+    WHERE  pl.is_active = TRUE
+"""
+
+
+def get_squad_members() -> list[dict]:
+    """Every first-team squad member, joined to position + club + adder.
+
+    Ordered by name (a squad list is read as a roster, not as a feed).
+
+    Standing rule: the SELECT names player_id, national_id and position
+    explicitly, plus the four ELIGIBILITY_REQUIRED_COLUMNS so
+    `compute_eligibility_status` can never be starved into a wrong badge.
+    """
+    conn = get_db()
+    with conn.cursor() as cur:
+        cur.execute(_SQUAD_SELECT + " ORDER BY pl.full_name")
+        return [dict(r) for r in cur.fetchall() or []]

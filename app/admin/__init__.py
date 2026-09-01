@@ -11,6 +11,7 @@ from . import photo_import  # noqa: E402,F401 — registers /admin/import/photos
 from . import assign_positions  # noqa: E402,F401 — registers /admin/assign-positions routes
 from . import assign_clubs  # noqa: E402,F401 — registers /admin/assign-clubs routes
 from . import club_aliases  # noqa: E402,F401 — registers /admin/club-aliases routes
+from . import squad  # noqa: E402,F401 — registers /admin/squad{,/add,/remove} routes
 
 
 @bp.route('/deleted-evaluations')
