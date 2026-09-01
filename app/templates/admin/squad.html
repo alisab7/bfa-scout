@@ -105,12 +105,26 @@
   </section>
 
   {# ── Search / filter ───────────────────────────────────────────── #}
-  <section>
+  {# The Alpine scope wraps BOTH the filter form and the candidate table:
+     the search box and the rows it filters live in different <form>s, so
+     the scope has to be their common ancestor. Typing filters the
+     already-rendered rows in place — no submit, no reload, no jump. #}
+  <section x-data="{
+             q: {{ (q or '') | tojson | forceescape }},
+             matches(el) {
+               const t = (this.q || '').toLowerCase().trim();
+               return !t || (el.dataset.search || '').includes(t);
+             },
+             rows() { return Array.from(document.querySelectorAll('#squad-candidates tr[data-search]')); },
+             get shown() { return this.rows().filter(r => this.matches(r)).length; }
+           }">
     <h2 class="text-lg font-bold mb-3" style="color:var(--text);">Add players</h2>
 
     <form method="GET" action="{{ url_for('admin.squad') }}"
           class="flex flex-wrap items-center gap-2 mb-4">
       <input type="search" name="q" value="{{ q or '' }}"
+             x-model="q" autocomplete="off"
+             @keydown.escape.prevent="q = ''"
              placeholder="Name or National / BFA ID…"
              aria-label="Search players by name or National / BFA ID"
              class="px-3 py-2 rounded text-sm flex-1 min-w-[14rem]"
@@ -157,6 +171,8 @@
         <option value="in"  {% if show == 'in'  %}selected{% endif %}>In squad</option>
       </select>
 
+      {# Typing filters instantly (below); this submit is the no-JS
+         fallback and the way to re-query the whole database. #}
       <button type="submit"
               class="px-4 py-2 rounded text-sm font-semibold text-white"
               style="background:var(--brand);">Search</button>
@@ -168,7 +184,7 @@
     {% if candidates %}
       {# x-data scope so the header select-all's Alpine @change binding runs
          (same mechanic as admin/assign_clubs.html). #}
-      <form method="POST" action="{{ url_for('admin.squad_add') }}" x-data="{}">
+      <form method="POST" action="{{ url_for('admin.squad_add') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         {# Carry the active filters through the POST → redirect, so the
            admin lands back on the same filtered page after a save. #}
@@ -184,19 +200,23 @@
             Add selected to squad
           </button>
           <span class="text-sm" style="color:var(--text-muted);">
-            {{ candidates|length }} player{{ '' if candidates|length == 1 else 's' }} shown
+            <span x-text="shown">{{ candidates|length }}</span>
+            of {{ candidates|length }} player{{ '' if candidates|length == 1 else 's' }} shown
           </span>
         </div>
 
         <div class="rounded-xl overflow-hidden mb-4"
              style="background:var(--surface);border:1px solid var(--border);">
           <div class="overflow-x-auto">
-            <table class="w-full text-sm">
+            <table class="w-full text-sm" id="squad-candidates">
               <thead>
                 <tr style="background:var(--bg);border-bottom:1px solid var(--border);">
                   <th class="px-4 py-3 text-left" style="color:var(--text-muted);">
-                    <input type="checkbox" title="Select all"
-                           @change="document.querySelectorAll('input.row-check:not(:disabled)').forEach(c => c.checked = $event.target.checked)">
+                    <input type="checkbox" title="Select all shown"
+                           @change="rows().filter(r => matches(r)).forEach(r => {
+                                      const c = r.querySelector('input.row-check:not(:disabled)');
+                                      if (c) c.checked = $event.target.checked;
+                                    })">
                   </th>
                   <th class="px-4 py-3 text-left" style="color:var(--text-muted);">Player</th>
                   <th class="px-4 py-3 text-left" style="color:var(--text-muted);">Position</th>
@@ -208,7 +228,15 @@
               <tbody>
                 {% for p in candidates %}
                   {% set pos = get_player_pos(p.primary_position_id) %}
-                  <tr style="border-bottom:1px solid var(--border);">
+                  <tr style="border-bottom:1px solid var(--border);"
+                      x-show="matches($el)"
+                      data-search="{{ (
+                          (p.full_name or '') ~ ' ' ~
+                          (p.full_name_ar or '') ~ ' ' ~
+                          (p.national_id or '') ~ ' ' ~
+                          (pos[0] or '') ~ ' ' ~
+                          (p.club_name or p.current_club or '')
+                      ) | lower | trim }}">
                     <td class="px-4 py-3">
                       <input type="checkbox" class="row-check" name="player_ids"
                              value="{{ p.id }}"
@@ -249,6 +277,18 @@
               </tbody>
             </table>
           </div>
+
+          <div x-show="shown === 0" x-cloak style="display:none;"
+               class="px-4 py-6 text-sm text-center">
+            <span style="color:var(--text-muted);">
+              No player here matches “<span x-text="q"></span>”.
+            </span>
+            <button type="button" @click="q = ''"
+                    style="color:var(--brand);font-weight:600;">Clear</button>
+            <span style="color:var(--text-muted);">
+              or press <strong>Search</strong> to query the whole database.
+            </span>
+          </div>
         </div>
       </form>
     {% else %}
@@ -262,4 +302,24 @@
   </section>
 
 </div>
+
+{# The position/club/membership selects still round-trip to the server.
+   Without this the page reloads at the top and the admin loses their
+   place in a long list. #}
+<script>
+  (function () {
+    var KEY = 'bfa:admin-squad:scroll';
+    document.addEventListener('submit', function (e) {
+      if (e.target && e.target.method && e.target.method.toLowerCase() === 'get') {
+        try { sessionStorage.setItem(KEY, String(window.scrollY)); } catch (_) {}
+      }
+    });
+    window.addEventListener('DOMContentLoaded', function () {
+      try {
+        var y = sessionStorage.getItem(KEY);
+        if (y !== null) { sessionStorage.removeItem(KEY); window.scrollTo(0, parseInt(y, 10) || 0); }
+      } catch (_) {}
+    });
+  })();
+</script>
 {% endblock %}

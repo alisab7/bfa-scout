@@ -32,6 +32,14 @@ COPY . .
 RUN useradd -m -u 1000 bfa && chown -R bfa:bfa /app
 USER bfa
 
+# Git SHA of the commit this image was built from. Declared LAST (after
+# the expensive COPY/chown layers) so changing it only invalidates this
+# cheap ENV layer, never the pip install. Defaults to "unknown" so a
+# plain `docker build` with no --build-arg still produces a working
+# image whose /healthz passes — ship.sh always supplies the real value.
+ARG GIT_SHA=unknown
+ENV GIT_SHA=${GIT_SHA}
+
 EXPOSE 5000
 
 # Container-level healthcheck. Compose ALSO declares one; both point at

@@ -37,17 +37,45 @@
   </div>
 
   {% if members %}
-    <div class="flex items-baseline gap-2 mb-3">
+    {# Client-side filter: the squad is a small, fully-rendered list, so
+       searching happens in the browser. No form submit, no page reload,
+       no scroll jump back to the top. #}
+    <div x-data="{
+           q: '',
+           matches(el) {
+             const t = (this.q || '').toLowerCase().trim();
+             return !t || (el.dataset.search || '').includes(t);
+           },
+           rows() { return Array.from(document.querySelectorAll('#squad-members tr[data-search]')); },
+           get shown() { return this.rows().filter(r => this.matches(r)).length; }
+         }">
+
+    <div class="flex flex-wrap items-baseline gap-x-2 gap-y-2 mb-3">
       <h2 class="text-lg font-bold" style="color:var(--text);">Squad</h2>
       <span class="text-sm" style="color:var(--text-muted);">
-        ({{ members | length }} player{{ '' if members|length == 1 else 's' }})
+        (<span x-text="shown">{{ members | length }}</span>
+        of {{ members | length }} player{{ '' if members|length == 1 else 's' }})
       </span>
+
+      <div class="ml-auto relative">
+        <label for="squad-search" class="sr-only">Search the squad</label>
+        <input id="squad-search" type="search" x-model="q"
+               autocomplete="off"
+               @keydown.escape.prevent="q = ''"
+               placeholder="Search name, ID, position or club…"
+               class="text-sm rounded px-3 py-1.5 pr-7"
+               style="background:var(--bg);color:var(--text);border:1px solid var(--border);min-width:16rem;">
+        <button type="button" x-show="q" x-cloak style="display:none;" @click="q = ''"
+                aria-label="Clear search"
+                class="absolute right-2 top-1/2 -translate-y-1/2 text-xs"
+                style="color:var(--text-muted);">&times;</button>
+      </div>
     </div>
 
     <div class="rounded-xl overflow-hidden"
          style="background:var(--surface);border:1px solid var(--border);">
       <div class="overflow-x-auto">
-        <table class="w-full text-sm">
+        <table class="w-full text-sm" id="squad-members">
           <thead>
             <tr style="background:var(--bg);border-bottom:1px solid var(--border);">
               <th class="px-4 py-3 text-left" style="color:var(--text-muted);">Player</th>
@@ -60,7 +88,15 @@
           <tbody>
             {% for p in members %}
               {% set pos = get_player_pos(p.primary_position_id) %}
-              <tr style="border-bottom:1px solid var(--border);">
+              <tr style="border-bottom:1px solid var(--border);"
+                  x-show="matches($el)"
+                  data-search="{{ (
+                      (p.full_name or '') ~ ' ' ~
+                      (p.full_name_ar or '') ~ ' ' ~
+                      (p.national_id or '') ~ ' ' ~
+                      (pos[0] or '') ~ ' ' ~ (pos[1] or '') ~ ' ' ~
+                      (p.club_name or p.current_club or '')
+                  ) | lower | trim }}">
                 <td class="px-4 py-3">
                   <div class="flex items-center gap-3">
                     <img src="{{ get_player_photo(p.id) }}" alt=""
@@ -100,7 +136,16 @@
           </tbody>
         </table>
       </div>
+
+      <div x-show="shown === 0" x-cloak class="px-4 py-6 text-sm text-center"
+           style="display:none;color:var(--text-muted);">
+        No squad player matches “<span x-text="q"></span>”.
+        <button type="button" @click="q = ''"
+                style="color:var(--brand);font-weight:600;">Clear search</button>
+      </div>
     </div>
+
+    </div>{# /x-data #}
   {% else %}
     <div class="rounded-xl p-6"
          style="background:var(--surface);border:1px solid var(--border);">

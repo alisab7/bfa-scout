@@ -1,5 +1,116 @@
 # Changelog
 
+## v1.11.0 — `ship.sh`: one-command deploy with real SHA verification (2026-09-01)
+
+### What this is
+
+Deploying was a manual chain — `git status`, stage, commit, push, SSH in,
+`sudo -u bfa git pull`, maybe a migration, `docker compose build`, `up`,
+eyeball `/healthz`, then **guess** whether the change actually went live.
+
+This morning that guess nearly cost us an import against stale code. The
+droplet's checkout was already at the right commit, so `git pull` said
+*"Already up to date"* — but the running Docker image had been built
+**before** that commit. Production was executing old code while every check
+in the chain reported success, `/healthz` included.
+
+Every one of those checks verified an *input* to the deploy (source state,
+exit codes, liveness). None verified the *output*. `ship.sh` closes that
+gap: the image now carries the git SHA it was built from, `/healthz` reports
+it, and a deploy is not called successful unless the **live** SHA equals the
+SHA just pushed.
+
+### Changes
+
+**`/healthz` reports the built SHA** — `app/healthz.py` now returns
+`{"status":"ok","sha":"<short>"}`. Purely additive: the existing DB probe,
+the `status` field and the 200/503 behaviour are untouched. The SHA is read
+**once at import** from an environment variable, so the endpoint stays
+dependency-light — it is the container health probe, and it gains no file
+read, no DB call, no subprocess. Missing or placeholder values degrade to
+`"sha":"unknown"` and still return 200, so a plain `docker build` or a
+locally-run Flask process still passes its healthcheck.
+
+**Build-arg plumbing** — `Dockerfile` gains `ARG GIT_SHA=unknown` /
+`ENV GIT_SHA=${GIT_SHA}`, declared *after* the expensive `pip install` and
+`chown` layers so a new SHA invalidates one cheap layer instead of the
+build. `docker-compose.prod.yml`'s `app.build` changes from the string form
+`build: .` to a mapping with `context: .` and
+`args: {GIT_SHA: ${GIT_SHA:-unknown}}` — the string form silently accepts no
+build args, so this was required, not cosmetic. `ship.sh` exports `GIT_SHA`
+before building; the `:-unknown` default keeps a bare
+`docker compose build` working.
+
+**`ship.sh`** (repo root) — four modes:
+
+* `./ship.sh "message"` — commit → push → deploy → verify
+* `./ship.sh push "message"` — steps 1–3 only
+* `./ship.sh deploy` — steps 4–6, ships what is on `origin/main`
+* `./ship.sh status` — read-only dry run, changes nothing
+* `-y` anywhere skips confirmations
+
+Deployment is **one non-interactive SSH call** — there is no longer a stage
+where commands get pasted onto the server. On the droplet, in order: backup
+via `scripts/backup_to_spaces.sh` (a failed backup stops the deploy), pull
+as `bfa`, apply new migrations, `build app` + `up -d --force-recreate app`,
+drain `/healthz`, then assert the live SHA.
+
+**Stop conditions, each loud and non-zero** — not on `main`; the push did
+not land (`git ls-remote` disagrees with local `HEAD`); the droplet's
+checkout differs from the pushed SHA after the pull (the "Already up to
+date" near-miss, named explicitly in the error); the backup failed; a
+migration failed (nothing is built or restarted on a half-migrated DB); the
+build or recreate failed; `/healthz` never healthy (last 50 lines of
+`docker compose logs app` dumped); the live SHA differs from the pushed one;
+or the image reports no SHA at all — an image that cannot identify itself is
+treated as unverified, never as fine.
+
+**Ledgered migrations** — new `migrations/*.sql` are applied automatically
+*before* the build, tracked in `/home/bfa/bfa-scout/.deployed_migrations`
+(`<sha256>  <filename>`), and never applied twice. psql is always invoked
+with `-X -v ON_ERROR_STOP=1 -P pager=off </dev/null`: a wide result set
+opened psql's pager today and left a transaction `idle in transaction`,
+blocking a second run behind its locks.
+
+**First-run baseline** — the ledger does not exist yet, and production is
+already fully migrated. The first `ship.sh` deploy seeds the ledger from the
+migrations present in the droplet checkout **before** that run's pull (i.e.
+exactly what has already been applied), applies none of them, and prints the
+list. Anything the pull introduces is genuinely new and is applied normally.
+Seeding from the *post*-pull state would have silently swallowed the new
+migrations the deploy existed to apply. Assumption: every migration already
+in the droplet checkout has in fact been applied.
+
+**Never `git add .`** — pre-flight lists changed/untracked files and asks
+(`[a]ll` / `[s]elect` file by file / `[n]` abort). `cowork_*_prompt.md`,
+`exports/` and `.DS_Store` are quarantined and never offered; a stray
+`cowork_*_prompt.md` has nearly been committed before.
+
+**nginx upstream nudge** — `nginx` `proxy_pass`es to the literal host `app`
+and caches that resolution, so a `--force-recreate` can leave it pointed at
+a dead IP. After the recreate, `ship.sh` reloads nginx (best effort). The
+health drain goes through nginx anyway, so a stale upstream is caught either
+way.
+
+**`scripts/ship_selftest.sh`** — offline self-test: no network, no droplet,
+no production. It builds a throwaway git triangle in a temp directory and
+stubs `ssh`/`sudo`/`docker`/`psql`/`curl` on `PATH`. The `ssh` stub does not
+fake the deploy — it **executes ship.sh's own server-side script** against
+the fake droplet, so the ledger logic and the pull/health/SHA gates are the
+real code paths rather than a re-implementation. The `psql` stub asserts the
+anti-pager flags are always present, making that a permanent regression
+guard. 28 assertions, covering every stop condition above plus the happy
+path, ledger idempotency, junk exclusion and clean-tree `status`.
+
+**`docs/ship.md`** — usage, the six steps, the SHA path from commit to
+`/healthz`, migration/ledger semantics, configuration, and why `ship.sh`
+does not call `scripts/deploy.sh`.
+
+`scripts/deploy.sh` is unchanged and remains the on-droplet manual fallback.
+It is deliberately not what `ship.sh` calls: it has no backup, no migration
+handling, and no SHA verification — its health gate is precisely the check
+that passed while production ran stale code.
+
 ## v1.10.0 — First-Team Squad: admin-curated squad table + NT squad view (2026-09-01)
 
 ### What this is

@@ -12,6 +12,10 @@ Both flips are one-line decorator / helper edits — Phase 7's E2E was
 written against the narrower contract, so this script tops up the
 coverage. Stays small (4 cases): full regression of the 7 suite
 still passes unchanged, so we don't need to retest everything.
+
+Every fixture (users, the player, the sentinel evaluation) is seeded by
+this script and removed in the `finally:` block — nothing is read out of
+ambient DB state. The `try:` opens before the first mutation.
 """
 from __future__ import annotations
 
@@ -73,56 +77,96 @@ VIEW_PW      = f"e2e-71-viewer-pw-{os.getpid()}"
 NT_EMAIL     = f"e2e-71-nt-{os.getpid()}@bfa.bh"
 NT_PW        = f"e2e-71-nt-pw-{os.getpid()}"
 
-INSERTED_USER_IDS: list[int] = []
-INSERTED_EVAL_IDS: list[int] = []
+PID = os.getpid()
+PLAYER_NAME = f"E2E-71 Player {PID}"
 
-print("=== Setup fixtures ===")
-with db() as conn, conn.cursor() as cur:
-    for email, pw, role, name in [
-        (TD_EMAIL,   TD_PW,   'technical_director', 'E2E-71 TD'),
-        (VIEW_EMAIL, VIEW_PW, 'viewer',             'E2E-71 Viewer'),
-        (NT_EMAIL,   NT_PW,   'nt_staff',           'E2E-71 NT'),
-    ]:
-        cur.execute("""INSERT INTO users (email, password_hash, full_name, role, is_active)
-                       VALUES (%s, %s, %s, %s, TRUE) RETURNING id""",
-                    (email,
-                     generate_password_hash(pw, method='pbkdf2:sha256:600000'),
-                     name, role))
-        INSERTED_USER_IDS.append(cur.fetchone()['id'])
-    conn.commit()
-nt_user_id = INSERTED_USER_IDS[2]
-print(f"  td_user_id={INSERTED_USER_IDS[0]}, "
-      f"viewer_user_id={INSERTED_USER_IDS[1]}, nt_user_id={nt_user_id}")
+INSERTED_USER_IDS:   list[int] = []
+INSERTED_EVAL_IDS:   list[int] = []
+INSERTED_PLAYER_IDS: list[int] = []
 
 
-# Insert a single NT-authored evaluation against Arthur (id=2) so we
-# can verify the viewer filter hides it.
-with db() as conn, conn.cursor() as cur:
-    cur.execute("SELECT primary_position_id FROM players WHERE id=2")
-    arthur_pos = cur.fetchone()['primary_position_id']
-    pos_group_id = None
-    if arthur_pos:
-        cur.execute("SELECT position_group_id FROM positions WHERE id=%s",
-                    (arthur_pos,))
-        pos_group_id = cur.fetchone()['position_group_id']
-    if not pos_group_id:
-        cur.execute("SELECT id FROM position_groups ORDER BY id LIMIT 1")
-        pos_group_id = cur.fetchone()['id']
-    cur.execute("""
-        INSERT INTO evaluations
-            (player_id, evaluator_id, position_group_id, status,
-             created_by_role, summary, nt_readiness_level, recommendation,
-             submitted_at)
-        VALUES (2, %s, %s, 'submitted', 'nt_staff',
-                'PHASE 7.1 SENTINEL NT-only eval', 'senior', 'monitor',
-                NOW())
-        RETURNING id
-    """, (nt_user_id, pos_group_id))
-    INSERTED_EVAL_IDS.append(cur.fetchone()['id'])
-    conn.commit()
+def cleanup():
+    """Remove every fixture this suite creates. Safe to call twice."""
+    with db() as conn, conn.cursor() as cur:
+        if INSERTED_PLAYER_IDS:
+            cur.execute("DELETE FROM evaluation_scores WHERE evaluation_id IN "
+                        "(SELECT id FROM evaluations WHERE player_id = ANY(%s))",
+                        (INSERTED_PLAYER_IDS,))
+            cur.execute("DELETE FROM evaluations WHERE player_id = ANY(%s)",
+                        (INSERTED_PLAYER_IDS,))
+        if INSERTED_EVAL_IDS:
+            cur.execute("DELETE FROM evaluation_scores WHERE evaluation_id = ANY(%s)",
+                        (INSERTED_EVAL_IDS,))
+            cur.execute("DELETE FROM evaluations WHERE id = ANY(%s)",
+                        (INSERTED_EVAL_IDS,))
+        if INSERTED_PLAYER_IDS:
+            cur.execute("DELETE FROM audit_log WHERE entity_type='player' "
+                        "AND entity_id = ANY(%s)", (INSERTED_PLAYER_IDS,))
+            cur.execute("DELETE FROM players WHERE id = ANY(%s)",
+                        (INSERTED_PLAYER_IDS,))
+        if INSERTED_USER_IDS:
+            cur.execute("DELETE FROM users WHERE id = ANY(%s)",
+                        (INSERTED_USER_IDS,))
+        conn.commit()
 
 
+# The `try:` opens BEFORE the first mutation so setup failures clean up too.
 try:
+    print("=== Setup fixtures ===")
+    with db() as conn, conn.cursor() as cur:
+        for email, pw, role, name in [
+            (TD_EMAIL,   TD_PW,   'technical_director', 'E2E-71 TD'),
+            (VIEW_EMAIL, VIEW_PW, 'viewer',             'E2E-71 Viewer'),
+            (NT_EMAIL,   NT_PW,   'nt_staff',           'E2E-71 NT'),
+        ]:
+            cur.execute("""INSERT INTO users (email, password_hash, full_name, role, is_active)
+                           VALUES (%s, %s, %s, %s, TRUE) RETURNING id""",
+                        (email,
+                         generate_password_hash(pw, method='pbkdf2:sha256:600000'),
+                         name, role))
+            INSERTED_USER_IDS.append(cur.fetchone()['id'])
+        conn.commit()
+    nt_user_id = INSERTED_USER_IDS[2]
+    print(f"  td_user_id={INSERTED_USER_IDS[0]}, "
+          f"viewer_user_id={INSERTED_USER_IDS[1]}, nt_user_id={nt_user_id}")
+
+    # Seed the player the sentinel eval hangs off, then insert a single
+    # NT-authored evaluation on him so we can verify the viewer filter hides
+    # it. Seeded rather than borrowed: the counts in case 4 assume the player
+    # has exactly one evaluation, which only holds for a fixture we own.
+    with db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT id FROM users WHERE role='admin' ORDER BY id LIMIT 1")
+        admin_user_id = cur.fetchone()['id']
+        cur.execute("""SELECT id, position_group_id FROM positions ORDER BY id LIMIT 1""")
+        pos = cur.fetchone()
+        pos_group_id = pos['position_group_id']
+        if not pos_group_id:
+            cur.execute("SELECT id FROM position_groups ORDER BY id LIMIT 1")
+            pos_group_id = cur.fetchone()['id']
+        cur.execute("""
+            INSERT INTO players (full_name, full_name_ar, national_id,
+                                 primary_position_id, nationality_status,
+                                 age_group, is_active, created_by)
+            VALUES (%s, %s, %s, %s, 'bahraini', 'senior', TRUE, %s)
+            RETURNING id
+        """, (PLAYER_NAME, 'لاعب', f'E2E71{PID}', pos['id'], admin_user_id))
+        player_id = cur.fetchone()['id']
+        INSERTED_PLAYER_IDS.append(player_id)
+        cur.execute("""
+            INSERT INTO evaluations
+                (player_id, evaluator_id, position_group_id, status,
+                 created_by_role, summary, nt_readiness_level, recommendation,
+                 submitted_at)
+            VALUES (%s, %s, %s, 'submitted', 'nt_staff',
+                    'PHASE 7.1 SENTINEL NT-only eval', 'senior', 'monitor',
+                    NOW())
+            RETURNING id
+        """, (player_id, nt_user_id, pos_group_id))
+        INSERTED_EVAL_IDS.append(cur.fetchone()['id'])
+        conn.commit()
+    print(f"  player_id={player_id} ({PLAYER_NAME!r}), "
+          f"sentinel_eval_id={INSERTED_EVAL_IDS[0]}")
+
     # ── Case 1: TD can GET /nt (was 403 in 7.0; now 200) ───────────
     print("\n=== Case 1: TD access to /nt (widened) ===")
     td_op = login(TD_EMAIL, TD_PW)
@@ -138,7 +182,7 @@ try:
     # ── Case 3: viewer's profile-page eval list omits NT eval ──────
     print("\n=== Case 3: viewer's player profile filters NT evals ===")
     view_op = login(VIEW_EMAIL, VIEW_PW)
-    status, profile_html, _ = http(view_op, "GET", "/players/2")
+    status, profile_html, _ = http(view_op, "GET", f"/players/{player_id}")
     chk("Case 3a: viewer can view player profile (200)",
         status == 200)
     chk("Case 3b: viewer profile does NOT contain the NT sentinel",
@@ -156,8 +200,10 @@ try:
     )
     flask_app = create_app()
     with flask_app.app_context():
-        n_view = get_evaluation_count_active(2, requesting_user_role='viewer')
-        n_adm  = get_evaluation_count_active(2, requesting_user_role='admin')
+        n_view = get_evaluation_count_active(player_id,
+                                             requesting_user_role='viewer')
+        n_adm  = get_evaluation_count_active(player_id,
+                                             requesting_user_role='admin')
     chk("Case 4a: viewer's count < admin's count "
         "(NT-only eval hidden from viewer)",
         n_view < n_adm, f"viewer={n_view}, admin={n_adm}")
@@ -167,7 +213,7 @@ try:
     # ── Case 5 (bonus): admin-class still sees everything ──────────
     admin_op = login(os.environ["INITIAL_ADMIN_EMAIL"],
                      os.environ["INITIAL_ADMIN_PASSWORD"])
-    _, admin_profile, _ = http(admin_op, "GET", "/players/2")
+    _, admin_profile, _ = http(admin_op, "GET", f"/players/{player_id}")
     chk("Case 5: admin still sees NT sentinel "
         "(only frontline roles get filtered)",
         "PHASE 7.1 SENTINEL NT-only eval" in admin_profile)
@@ -175,17 +221,9 @@ try:
 
 finally:
     # Cleanup — strict, in case any assertion fired mid-flight.
-    with db() as conn, conn.cursor() as cur:
-        if INSERTED_EVAL_IDS:
-            cur.execute("DELETE FROM evaluation_scores WHERE evaluation_id = ANY(%s)",
-                        (INSERTED_EVAL_IDS,))
-            cur.execute("DELETE FROM evaluations WHERE id = ANY(%s)",
-                        (INSERTED_EVAL_IDS,))
-        if INSERTED_USER_IDS:
-            cur.execute("DELETE FROM users WHERE id = ANY(%s)",
-                        (INSERTED_USER_IDS,))
-        conn.commit()
+    cleanup()
     print(f"\n(cleanup: deleted {len(INSERTED_EVAL_IDS)} evals + "
+          f"{len(INSERTED_PLAYER_IDS)} players + "
           f"{len(INSERTED_USER_IDS)} users)")
 
 

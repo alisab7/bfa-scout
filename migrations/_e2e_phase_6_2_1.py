@@ -2,21 +2,23 @@
 Phase 6.2.1 synthetic E2E. Verifies admin notes are gone from all
 user-facing surfaces.
 
-Approach: inject distinctive sentinel strings into Arthur's
-`eligibility_notes_admin` and `bahrain_residency_notes` columns,
-then assert those strings do NOT appear in:
+Approach: seed a throwaway player, inject distinctive sentinel strings
+into its `eligibility_notes_admin` and `bahrain_residency_notes`
+columns, then assert those strings do NOT appear in:
   - the full-mode passport PDF
   - the public-mode passport PDF
   - the player profile page HTML
 
 …BUT do appear (in form-field shape) on the admin edit page —
 proving the data path is intact, only the user-facing rendering is
-hidden. Always restore the prior DB values in `finally:` so the
-test leaves no trace.
+hidden. The player is seeded by this suite and deleted in `finally:`
+(the `try:` opens before the first mutation), so the test leaves no
+trace and never mutates a real player's admin notes.
 
 Per hard rule: real Flask + real HTTP. No flask.test_client.
 """
 import os
+import pathlib
 import re
 import sys
 from io import BytesIO
@@ -30,6 +32,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 BASE = "http://127.0.0.1:5057"
+REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 
 def http(op, method, path, *, data=None, raw=False):
@@ -75,41 +78,60 @@ def chk(label, ok, ev=""):
 # ── Fixtures ─────────────────────────────────────────────────────
 admin = login(os.environ["INITIAL_ADMIN_EMAIL"], os.environ["INITIAL_ADMIN_PASSWORD"])
 
-with db() as conn, conn.cursor() as cur:
-    cur.execute(
-        "SELECT id, full_name, eligibility_notes_admin, bahrain_residency_notes "
-        "FROM players WHERE is_active=TRUE AND full_name ILIKE 'Arthur%' LIMIT 1"
-    )
-    arthur = cur.fetchone()
-chk("Arthur player row found", arthur is not None)
-print(f"  player_id={arthur['id']}, prior elig_note={arthur['eligibility_notes_admin']!r}, "
-      f"prior resid_note={arthur['bahrain_residency_notes']!r}")
+PID = os.getpid()
+PLAYER_NAME    = f"E2E-621 Player {PID}"
+SENTINEL_ELIG  = f"S621-ELIG-{PID}-DO-NOT-PUBLISH"
+SENTINEL_RESID = f"S621-RESID-{PID}-DO-NOT-PUBLISH"
+
+INSERTED_PLAYER_IDS: list[int] = []
 
 
-SENTINEL_ELIG  = f"S621-ELIG-{os.getpid()}-DO-NOT-PUBLISH"
-SENTINEL_RESID = f"S621-RESID-{os.getpid()}-DO-NOT-PUBLISH"
+def cleanup():
+    """Remove every fixture this suite creates. Safe to call twice."""
+    with db() as conn, conn.cursor() as cur:
+        if INSERTED_PLAYER_IDS:
+            cur.execute("DELETE FROM audit_log WHERE entity_type='player' "
+                        "AND entity_id = ANY(%s)", (INSERTED_PLAYER_IDS,))
+            cur.execute("DELETE FROM players WHERE id = ANY(%s)",
+                        (INSERTED_PLAYER_IDS,))
+        conn.commit()
 
 
-# ── Inject sentinels (snapshot prior values so we can restore) ──
-with db() as conn, conn.cursor() as cur:
-    cur.execute("""
-        SELECT eligibility_notes_admin, bahrain_residency_notes
-        FROM   players WHERE id = %s
-    """, (arthur['id'],))
-    prior = cur.fetchone()
-    cur.execute("""
-        UPDATE players
-        SET    eligibility_notes_admin = %s,
-               bahrain_residency_notes = %s
-        WHERE  id = %s
-    """, (SENTINEL_ELIG, SENTINEL_RESID, arthur['id']))
-    conn.commit()
-
+# The `try:` opens BEFORE the first mutation, so a failure during setup still
+# removes the seeded player instead of leaking it.
 try:
+    # Seed the player carrying the sentinels. Residency route with a start
+    # date >5y ago so the eligibility section actually renders a recognised
+    # label on the passport (asserted below).
+    with db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT id FROM users WHERE role='admin' ORDER BY id LIMIT 1")
+        admin_user_id = cur.fetchone()['id']
+        cur.execute("SELECT id FROM positions ORDER BY id LIMIT 1")
+        position_id = cur.fetchone()['id']
+        cur.execute("""
+            INSERT INTO players (full_name, full_name_ar, national_id, dob,
+                                 primary_position_id, nationality,
+                                 nationality_status,
+                                 bahrain_residency_start_date,
+                                 eligibility_notes_admin,
+                                 bahrain_residency_notes,
+                                 age_group, is_active, created_by)
+            VALUES (%s, %s, %s, DATE '2000-01-01', %s, 'Brazil',
+                    'foreign_residency', CURRENT_DATE - INTERVAL '6 years',
+                    %s, %s, 'senior', TRUE, %s)
+            RETURNING id, full_name
+        """, (PLAYER_NAME, 'لاعب', f'E2E621{PID}', position_id,
+              SENTINEL_ELIG, SENTINEL_RESID, admin_user_id))
+        player = cur.fetchone()
+        INSERTED_PLAYER_IDS.append(player['id'])
+        conn.commit()
+    chk("seeded player row created", player is not None)
+    print(f"  player_id={player['id']} ({PLAYER_NAME!r}) — sentinels injected")
+
     # ── Full-mode PDF ─────────────────────────────────────────
     print("\n=== Full-mode passport PDF ===")
     _, pdf_full, _, _ = http(admin, "GET",
-        f"/players/{arthur['id']}/passport.pdf", raw=True)
+        f"/players/{player['id']}/passport.pdf", raw=True)
     text_full = extract_pdf_text(pdf_full)
     chk("full PDF returned (%PDF magic + > 5KB)",
         pdf_full[:5] == b'%PDF-' and len(pdf_full) > 5000)
@@ -133,7 +155,7 @@ try:
     # ── Public-mode PDF ───────────────────────────────────────
     print("\n=== Public-mode passport PDF ===")
     _, pdf_pub, _, _ = http(admin, "GET",
-        f"/players/{arthur['id']}/passport.pdf?public=1", raw=True)
+        f"/players/{player['id']}/passport.pdf?public=1", raw=True)
     text_pub = extract_pdf_text(pdf_pub)
     chk("public PDF returned (%PDF magic + > 5KB)",
         pdf_pub[:5] == b'%PDF-' and len(pdf_pub) > 5000)
@@ -146,7 +168,7 @@ try:
 
     # ── Profile page HTML ─────────────────────────────────────
     print("\n=== Profile page HTML (/players/<id>) ===")
-    _, profile_html, _, _ = http(admin, "GET", f"/players/{arthur['id']}")
+    _, profile_html, _, _ = http(admin, "GET", f"/players/{player['id']}")
     chk("profile page HTML does NOT contain SENTINEL_ELIG",
         SENTINEL_ELIG not in profile_html,
         f"found at idx {profile_html.find(SENTINEL_ELIG)}" if SENTINEL_ELIG in profile_html else "")
@@ -159,7 +181,7 @@ try:
 
     # ── Edit form (admin-only path) — SHOULD contain the data ──
     print("\n=== Admin edit page (/players/<id>/edit) ===")
-    _, edit_html, _, _ = http(admin, "GET", f"/players/{arthur['id']}/edit")
+    _, edit_html, _, _ = http(admin, "GET", f"/players/{player['id']}/edit")
     chk("edit page has the eligibility_notes_admin form field "
         "(admin authors them here)",
         'name="eligibility_notes_admin"' in edit_html)
@@ -173,8 +195,8 @@ try:
 
     # ── Sanity: passport template literal check ──────────────
     print("\n=== Template sanity: passport.html has no admin-note rendering ===")
-    import pathlib
-    tmpl = pathlib.Path('D:/BFA-Scout/app/templates/passport/passport.html').read_text(encoding='utf-8')
+    tmpl = (REPO_ROOT / 'app' / 'templates' / 'passport'
+            / 'passport.html').read_text(encoding='utf-8')
     # The Jinja conditional shouldn't appear; comments mentioning the
     # field names are fine (they're explanatory).
     chk("passport.html has no `{% if player.eligibility_notes_admin %}` block",
@@ -187,20 +209,9 @@ try:
         '{{ player.bahrain_residency_notes }}' not in tmpl)
 
 finally:
-    # ── Restore prior DB values (preserve backend state) ─────
-    with db() as conn, conn.cursor() as cur:
-        cur.execute("""
-            UPDATE players
-            SET    eligibility_notes_admin = %s,
-                   bahrain_residency_notes = %s
-            WHERE  id = %s
-        """, (prior['eligibility_notes_admin'],
-              prior['bahrain_residency_notes'],
-              arthur['id']))
-        conn.commit()
-    print(f"\n(restored prior DB values: "
-          f"elig={prior['eligibility_notes_admin']!r}, "
-          f"resid={prior['bahrain_residency_notes']!r})")
+    # ── Remove the seeded fixture (leave no trace) ───────────
+    cleanup()
+    print(f"\n(cleanup: deleted {len(INSERTED_PLAYER_IDS)} seeded player(s))")
 
 
 # ── Summary ────────────────────────────────────────────────────

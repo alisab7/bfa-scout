@@ -15,7 +15,15 @@
 #   docker compose -f docker-compose.prod.yml up -d
 services:
   app:
-    build: .
+    build:
+      context: .
+      args:
+        # Baked into the image as ENV GIT_SHA and surfaced at /healthz so
+        # a deploy can be *proved* live (ship.sh compares it against the
+        # SHA it pushed). Interpolated from the shell environment at build
+        # time — ship.sh exports GIT_SHA; a bare `docker compose build`
+        # falls back to "unknown" and still produces a healthy container.
+        GIT_SHA: ${GIT_SHA:-unknown}
     image: bfa-scout:latest
     restart: unless-stopped
     env_file: .env.production

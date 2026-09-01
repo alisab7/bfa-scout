@@ -301,8 +301,8 @@ try:
     # ─── Visibility tests ─────────────────────────────────────
     print("\n=== Visibility tests on player profile ===")
 
-    # Case 7: scout views Arthur's profile
-    status, html, _, _ = http(scout_op, "GET", "/players/2")
+    # Case 7: scout views the seeded player's profile
+    status, html, _, _ = http(scout_op, "GET", f"/players/{eval_player_id}")
     chk("Case 7a: scout's profile view returns 200", status == 200)
     chk("Case 7b: scout's profile contains the scout-authored eval marker",
         "E2E test eval (scout)" in html,
@@ -317,7 +317,7 @@ try:
         'role-nt' not in html)
 
     # Case 8: NT staff views same profile
-    status, html, _, _ = http(nt_op, "GET", "/players/2")
+    status, html, _, _ = http(nt_op, "GET", f"/players/{eval_player_id}")
     chk("Case 8a: NT staff's profile view returns 200", status == 200)
     chk("Case 8b: NT staff sees scout eval",
         "E2E test eval (scout)" in html)
@@ -327,7 +327,7 @@ try:
         'role-nt' in html)
 
     # Case 9: admin views same profile
-    status, html, _, _ = http(admin_op, "GET", "/players/2")
+    status, html, _, _ = http(admin_op, "GET", f"/players/{eval_player_id}")
     chk("Case 9a: admin's profile view returns 200", status == 200)
     chk("Case 9b: admin sees both evals + NT badge",
         "E2E test eval (scout)" in html
@@ -347,13 +347,15 @@ try:
     flask_app = create_app()
     with flask_app.app_context():
         # Case 10: scout view
-        n_scout = get_evaluation_count_active(2, requesting_user_role='scout')
+        n_scout = get_evaluation_count_active(
+            eval_player_id, requesting_user_role='scout')
         agg_scout = get_player_evaluation_aggregate(
-            2, mode='averaged', requesting_user_role='scout')
+            eval_player_id, mode='averaged', requesting_user_role='scout')
         # Case 11: nt_staff view
-        n_nt    = get_evaluation_count_active(2, requesting_user_role='nt_staff')
+        n_nt    = get_evaluation_count_active(
+            eval_player_id, requesting_user_role='nt_staff')
         agg_nt = get_player_evaluation_aggregate(
-            2, mode='averaged', requesting_user_role='nt_staff')
+            eval_player_id, mode='averaged', requesting_user_role='nt_staff')
 
     chk("Case 10a: scout's eval count is strictly less than NT's count "
         "(NT eval hidden from scout)",
@@ -373,33 +375,26 @@ try:
     print("\n=== Squad list on /nt ===")
     status, nt_html, _, _ = http(admin_op, "GET", "/nt/")
     chk("Case 12a: /nt renders with 200", status == 200)
-    # Arthur (foreign_residency w/ residency since 2020-12-06 → 5y → 2025-12-06)
-    # was tagged "Eligible from 2025-12-06" in earlier PDFs; he should be on /nt.
-    chk("Case 12b: /nt squad lists Arthur (residency-route eligible)",
-        "Arthur Rezende" in nt_html,
-        f"snippet around 'Arthur': "
-        f"{nt_html[max(0, nt_html.find('Arthur')-30):nt_html.find('Arthur')+80]!r}")
+    # The seeded eval player is a born citizen (bahraini, no origin country,
+    # senior) → the BPL-eligible squad query must list him.
+    chk("Case 12b: /nt squad lists the seeded eligible player",
+        EVAL_PLAYER_NAME in nt_html,
+        f"snippet around the name: "
+        f"{nt_html[max(0, nt_html.find(EVAL_PLAYER_NAME)-30):nt_html.find(EVAL_PLAYER_NAME)+80]!r}")
 
-    # Case 13: temporarily flip a player to not_eligible and verify /nt
-    # excludes them.
-    if not_elig_player:
-        with db() as conn, conn.cursor() as cur:
-            cur.execute("""UPDATE players SET nationality_status='not_eligible'
-                           WHERE id=%s""", (not_elig_player['id'],))
-            conn.commit()
-        try:
-            status, nt_html2, _, _ = http(admin_op, "GET", "/nt/")
-            chk(f"Case 13: /nt does NOT list {not_elig_player['full_name']!r} "
-                "(now not_eligible)",
-                not_elig_player['full_name'] not in nt_html2)
-        finally:
-            with db() as conn, conn.cursor() as cur:
-                cur.execute("""UPDATE players SET nationality_status=%s
-                               WHERE id=%s""",
-                            (not_elig_player_prior_status, not_elig_player['id']))
-                conn.commit()
-    else:
-        print("  (no candidate player for case 13 — skipped)")
+    # Case 13: the suite's second seeded player starts eligible (so we know
+    # the name CAN appear); flip him to not_eligible and verify /nt drops him.
+    chk("Case 13a: /nt lists the second seeded player while eligible "
+        "(precondition)",
+        not_elig_player['full_name'] in nt_html)
+    with db() as conn, conn.cursor() as cur:
+        cur.execute("""UPDATE players SET nationality_status='not_eligible'
+                       WHERE id=%s""", (not_elig_player['id'],))
+        conn.commit()
+    status, nt_html2, _, _ = http(admin_op, "GET", "/nt/")
+    chk(f"Case 13b: /nt does NOT list {not_elig_player['full_name']!r} "
+        "(now not_eligible)",
+        not_elig_player['full_name'] not in nt_html2)
 
 
     # ─── Create-path stamping (cases 14/15) ──────────────────────
@@ -407,11 +402,12 @@ try:
     # Use a "freestanding" match_id = NULL? The get_or_create_draft helper
     # doesn't allow that (the UNIQUE constraint includes match_id and the
     # search filters by match_id = NULL won't match other drafts cleanly).
-    # We need a real match_id. Pick the most recent match.
+    # We need a real match_id — the suite seeds its own rather than picking
+    # up whatever match happens to be most recent.
     with db() as conn, conn.cursor() as cur:
-        cur.execute("SELECT id FROM matches ORDER BY id DESC LIMIT 1")
+        cur.execute("SELECT id FROM matches WHERE id=%s", (seeded_match_id,))
         match_row = cur.fetchone()
-        chk("Case 14a: at least one match exists for create-path test",
+        chk("Case 14a: the seeded match exists for the create-path test",
             match_row is not None)
         if match_row:
             match_id = match_row['id']
@@ -419,21 +415,17 @@ try:
             # Case 14: nt_staff creator
             with flask_app.app_context():
                 draft_nt = get_or_create_draft(
-                    p_arthur['id'], match_id, nt_user_id, pos_group_id,
+                    eval_player_id, match_id, nt_user_id, pos_group_id,
                     creator_role='nt_staff')
             INSERTED_EVAL_IDS.append(draft_nt['id'])
             chk("Case 14b: nt_staff draft DB row has created_by_role='nt_staff'",
                 draft_nt.get('created_by_role') == 'nt_staff',
                 f"got: {draft_nt.get('created_by_role')!r}")
 
-            # Case 15: admin creator. Reuse admin user_id from env login.
-            with db() as conn2, conn2.cursor() as cur2:
-                cur2.execute("SELECT id FROM users WHERE email=%s",
-                             (os.environ['INITIAL_ADMIN_EMAIL'],))
-                admin_user_id = cur2.fetchone()['id']
+            # Case 15: admin creator (admin_user_id resolved during setup).
             with flask_app.app_context():
                 draft_admin = get_or_create_draft(
-                    p_arthur['id'], match_id, admin_user_id, pos_group_id,
+                    eval_player_id, match_id, admin_user_id, pos_group_id,
                     creator_role='admin')
             INSERTED_EVAL_IDS.append(draft_admin['id'])
             chk("Case 15: admin draft DB row has created_by_role='admin'",
@@ -461,20 +453,12 @@ try:
 
 finally:
     # ─── Cleanup ───────────────────────────────────────────────
-    print("\n(cleanup: restoring DB state)")
-    with db() as conn, conn.cursor() as cur:
-        # 1. Delete scores belonging to test evals (FK CASCADE not on this)
-        if INSERTED_EVAL_IDS:
-            cur.execute("DELETE FROM evaluation_scores WHERE evaluation_id = ANY(%s)",
-                        (INSERTED_EVAL_IDS,))
-            cur.execute("DELETE FROM evaluations WHERE id = ANY(%s)",
-                        (INSERTED_EVAL_IDS,))
-        # 2. Delete the throwaway users
-        if INSERTED_USER_IDS:
-            cur.execute("DELETE FROM users WHERE id = ANY(%s)",
-                        (INSERTED_USER_IDS,))
-        conn.commit()
-    print(f"  deleted {len(INSERTED_EVAL_IDS)} evals + {len(INSERTED_USER_IDS)} users")
+    print("\n(cleanup: removing seeded fixtures)")
+    cleanup()
+    print(f"  deleted {len(INSERTED_EVAL_IDS)} evals + "
+          f"{len(INSERTED_PLAYER_IDS)} players + "
+          f"{len(INSERTED_MATCH_IDS)} matches + "
+          f"{len(INSERTED_USER_IDS)} users")
 
 
 # ─── Summary ──────────────────────────────────────────────────
