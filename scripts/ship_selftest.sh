@@ -33,6 +33,7 @@ cat > "$BIN/ssh" <<'EOS'
 # Ignore ssh's own flags; the last argument is the remote command. Run it
 # locally with the deploy script still arriving on stdin, exactly as sshd would.
 last=""; for a in "$@"; do last="$a"; done
+[ -n "${MOCK_SSH_LOG:-}" ] && printf '%s\n' "$last" >> "$MOCK_SSH_LOG"
 exec bash -c "$last"
 EOS
 
@@ -169,6 +170,7 @@ export SHIP_HEALTH_SLEEP=0
 export SHIP_COMPOSE_FILE=docker-compose.prod.yml
 export MOCK_BUILT_SHA_FILE="$ROOT/built_sha"
 export MOCK_CURL_COUNT_FILE="$ROOT/curl_count"
+export MOCK_SSH_LOG="$ROOT/ssh_log"
 export NO_COLOR=1
 
 reset_mocks() {
@@ -176,7 +178,7 @@ reset_mocks() {
           MOCK_HEALTH_NEVER MOCK_HEALTH_FAIL_FIRST MOCK_LIVE_SHA \
           MOCK_STALE_SHA_FIRST MOCK_STALE_SHA \
           MOCK_HEALTH_NO_SHA MOCK_LSREMOTE_SHA 2>/dev/null || true
-    rm -f "$MOCK_CURL_COUNT_FILE"
+    rm -f "$MOCK_CURL_COUNT_FILE" "$MOCK_SSH_LOG"
 }
 
 OUT="$ROOT/out.txt"
@@ -293,6 +295,22 @@ check "tolerates the first couple of connection errors" 0 "$rc" "SHIPPED"
 reset_mocks; new_commit
 rc="$(MOCK_LIVE_SHA=badbad1 run_ship "stale image" -y)"
 check "STOP on live-SHA mismatch (the near-miss this tool exists for)" 1 "$rc" "the deploy did NOT take"
+
+# ── 9a. Step 5 must verify THROUGH the droplet, never against local host ─────
+# HEALTH_URL is https://localhost/healthz. Evaluated on the Mac that is the
+# laptop, not the droplet — so step 5 has to send the curl over ssh.
+reset_mocks; new_commit
+rc="$(run_ship "verify via droplet" -y)"
+check "full deploy verifies the live SHA" 0 "$rc" "SHIPPED"
+if grep -q "curl .*healthz" "$MOCK_SSH_LOG" 2>/dev/null; then
+    echo "  PASS  step 5 read /healthz over ssh (through the droplet)"; PASS=$((PASS+1))
+else
+    echo "  FAIL  step 5 did not curl /healthz over ssh — it may be hitting localhost"
+    FAIL=$((FAIL+1))
+fi
+grep -q "verified via" "$OUT" \
+    && { echo "  PASS  the summary names the host it verified through"; PASS=$((PASS+1)); } \
+    || { echo "  FAIL  expected 'verified via <host>' in the output"; FAIL=$((FAIL+1)); }
 
 # ── 9b. The SHA settles LATE — must ship, not abort ──────────────────────────
 # A force-recreate leaves the OLD container answering status=ok with the OLD

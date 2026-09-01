@@ -481,20 +481,37 @@ REMOTE_DEPLOY
         die "the droplet deploy FAILED (see the server output above). Production may be unchanged or partially updated — read the FATAL line."
     fi
 
-    step "[5/6] SHA verification (local re-assert)"
-    local live
-    live="$( { grep '^SHIP_LIVE_SHA=' "$out" || true; } | tail -1 | cut -d= -f2- | tr -d '\r')"
+    step "[5/6] SHA verification (independent check, through the droplet)"
     MIGRATIONS_APPLIED_LIST="$( { grep '^SHIP_MIGRATION_APPLIED=' "$out" || true; } | cut -d= -f2- | tr -d '\r')"
     rm -f "$out"
 
-    [ -n "$live" ] || die "the droplet never reported a live SHA. Deploy unverified."
+    # This must NOT curl HEALTH_URL from here: it is https://localhost/healthz,
+    # and on this machine localhost is the laptop, not the droplet. It also
+    # must not simply re-read the SHA the deploy printed — that only proves
+    # the remote stdout arrived intact. So ask the droplet again, over the
+    # same SSH path the deploy used, and let it resolve localhost itself.
+    local live="" body="" i=0
+    while [ "$i" -lt "$HEALTH_TRIES" ]; do
+        i=$((i + 1))
+        body="$(ssh_exec "curl -fsS -k --max-time 10 '$HEALTH_URL'" </dev/null 2>/dev/null || true)"
+        live="$(printf '%s' "$body" \
+                | sed -n 's/.*"sha"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+                | head -1 | tr -d '\r')"
+        if [ -n "$live" ] && [ "$live" = "$short" ]; then
+            break
+        fi
+        info "attempt $i/$HEALTH_TRIES: droplet /healthz sha='${live:-<absent>}' (want $short) — still settling"
+        sleep "$HEALTH_SLEEP"
+    done
+
+    [ -n "$live" ] || die "the droplet never reported a live SHA after $HEALTH_TRIES tries. Deploy unverified."
     if [ "$live" != "$short" ]; then
         die "live SHA does not match what you pushed.
        pushed: $short
        live:   $live
        Your change is NOT running in production."
     fi
-    ok "live /healthz sha = $live == pushed $short"
+    ok "live /healthz sha = $live == pushed $short (verified via $SSH_HOST)"
 
     step "[6/6] Summary"
     printf '    %scommit%s         %s\n' "$C_BOLD" "$C_RESET" "$sha"
