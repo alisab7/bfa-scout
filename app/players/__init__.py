@@ -211,6 +211,18 @@ def _elig_year_bar(players, elig_year):
     Counts (and therefore which buttons render) are computed on the
     PRE-year-filter set, so the coach can always switch buckets; empty
     buckets render NO button at all.
+
+    BIRTHRIGHT CITIZENS — two DIFFERENT scopes, on purpose:
+      * COUNTS/BUTTONS: always excluded. `bucket_players_by_eligibility_year`
+        gives them no bucket at all (see app/players/eligibility.py), so they
+        contribute to no count and can never be the sole reason a chip
+        renders. The bar describes a naturalization todo list; someone
+        eligible by birth is not on it.
+      * THE GRID: excluded only WHEN a year filter is active. With no
+        ?elig_year= the incoming list is returned untouched, so the plain
+        players list still shows born citizens exactly as before. The filter
+        step needs no special case: a citizen has no entry in `bucket_by_id`,
+        so `.get(...)` yields None and never matches a bucket key.
     """
     from app.players.eligibility import (
         ELIG_YEAR_BUCKETS, bucket_players_by_eligibility_year,

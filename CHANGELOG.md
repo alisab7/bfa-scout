@@ -1,5 +1,73 @@
 # Changelog
 
+## Unreleased — /players: birthright citizens excluded from the eligibility-YEAR filter (2026-09-07)
+
+**What this is.** The eligibility-year bar is a NATURALIZATION-TRACKING tool —
+a todo list of players moving toward NT eligibility on the 5-year residency
+clock. Birthright citizens are eligible by birth, run no clock and need no
+date, so they were piling into "Date not set" and burying the players who
+genuinely need one. They are now out of the year filter ENTIRELY: no bucket,
+no count, no chip.
+
+### Changed
+- `eligibility_year_bucket()` (`app/players/eligibility.py`) now returns
+  `str | None` and returns **None** when the engine's
+  `compute_eligibility_status(player)['status_code'] == 'citizen'`. This is
+  the engine's own classification for "birthright-eligible, no residency
+  clock, no resolvable date" — the citizen condition is NOT re-derived from
+  raw columns, so the filter still cannot disagree with the badge.
+- `bucket_players_by_eligibility_year()` skips bucket-`None` players
+  entirely: they get no entry in `bucket_by_player_id` and add to no count.
+- **Two deliberately different scopes** (`_elig_year_bar`,
+  `app/players/__init__.py`):
+  * **Counts and buttons — ALWAYS exclude birthright citizens.** They describe
+    the naturalization todo list, so a citizen must never contribute to a
+    count or be the reason a chip renders. A bucket left empty once they are
+    removed renders **no button at all**.
+  * **The grid — excludes them only WHEN `?elig_year=` is active.** With no
+    year filter the plain list is completely unchanged and born citizens
+    appear normally. No special case was needed: a citizen has no entry in
+    `bucket_by_id`, so the existing `.get(...) == elig_year` test never
+    matches.
+
+### Unchanged (explicitly)
+- The eligibility **badge** everywhere: a born citizen still reads "Citizen"
+  (`data-status="citizen"`) on the list, profile and compare surfaces.
+- The existing `?elig=` filter — `elig=eligible_now` still returns birthright
+  citizens.
+- The club / position / nationality / search filters, and the plain
+  unfiltered players list.
+- **"Date not set" keeps everyone who genuinely belongs there:** a naturalized
+  player (`bahraini` + `origin_country`, including the placeholder `'Other'`)
+  whose residency start date is still missing, plus `unknown`,
+  `not_eligible` and `foreign_other`. ONLY birthright citizens were removed.
+
+### Notes
+- **`status_code == 'citizen'` also covers `foreign_ancestry`.**
+  `compute_eligibility_status` returns that code from two branches:
+  `bahraini` + `origin_country` NULL (born citizen) AND `foreign_ancestry`.
+  Keying off the engine output therefore excludes foreign-ancestry players
+  too — correct in principle (also birthright-eligible, also no clock), and
+  it avoids re-deriving the condition. **There are currently ZERO
+  `foreign_ancestry` players in either the local DB or prod**, so the
+  practical effect today is nil; flagged for confirmation in case it should
+  later be narrowed to born citizens only.
+- Local DB (88 active seniors) bucket distribution — before: `unset: 88`.
+  After: `unset: 44` (the `foreign_residency` players with no dates), with the
+  44 born citizens in **no bucket**. Prod has 80 born citizens, 44 naturalized
+  (`bahraini` + origin) and 45 `foreign_residency`.
+
+### Tests
+- `migrations/_e2e_elig_year_buckets.py` extended from 34 to **54
+  assertions**, all passing. Fixtures grew from 9 to 12 self-seeded players
+  (still dropped in `finally:`, still no ambient SELECTs): added a naturalized
+  player missing a date (`bahraini` + origin `'Other'`), a `not_eligible`
+  player, and a `foreign_ancestry` player; the born citizen was moved into the
+  seeded club so an emptied bucket can be proven to render no chip. New Y13
+  block asserts the exclusion end to end (absent from all six buckets, zero
+  chips when alone on the page, chip counts summing to the bucketed players
+  only, badge still "Citizen", plain list and `?elig=` / `?club=` unaffected).
+
 ## Unreleased — /players: eligibility-YEAR bucket filter (2026-09-07)
 
 **What this is.** A coach on `/players` can now click a year bucket and see who

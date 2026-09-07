@@ -369,6 +369,11 @@ def delete_orphan_scores(conn, player_id: int, new_position_group_id: int) -> in
 # If you are about to write date arithmetic in here, stop and read the
 # engine's value instead.
 #
+# SCOPE: this is a NATURALIZATION-TRACKING tool. Birthright citizens
+# (status_code='citizen') are excluded from it entirely — see
+# `eligibility_year_bucket`, which returns None for them. Their BADGE is
+# untouched: a born citizen still reads "Citizen" everywhere.
+#
 # Fixed display order — the players list renders these left-to-right and only
 # for buckets that actually contain players in the current result set.
 ELIG_YEAR_BUCKETS: tuple[tuple[str, str], ...] = (
@@ -388,22 +393,37 @@ _ELIG_YEAR_MIN = 2026
 _ELIG_YEAR_MAX = 2028
 
 
-def eligibility_year_bucket(player) -> str:
+def eligibility_year_bucket(player) -> str | None:
     """
     Which eligibility-year bucket this player belongs in.
 
-    Returns one of ELIG_YEAR_KEYS:
+    Returns one of ELIG_YEAR_KEYS, or None for a player who is OUT OF SCOPE
+    for the year filter entirely:
       'now'    — the engine says eligible_now (resolved date <= today, i.e.
                  the counting/residency or explicit-date route completed)
       '2026' / '2027' / '2028'
                — the engine says eligible_future and the resolved date falls
                  in that year
       'later'  — eligible_future with a resolved year >= 2029
-      'unset'  — the engine resolved no eligibility date for this player.
-                 NOTE this deliberately includes BORN CITIZENS
-                 (status_code='citizen', is_eligible_now=True, birthright —
-                 no date), per spec: they belong in "Date not set", NOT in
-                 "Eligible now". It also covers 'unknown' and 'not_eligible'.
+      'unset'  — the engine resolved no eligibility date for this player,
+                 but they ARE on the naturalization journey (or their status
+                 is undetermined): covers 'unknown' (incl. a naturalized
+                 passport holder whose residency start is still missing) and
+                 'not_eligible'.
+      None     — BIRTHRIGHT CITIZEN (status_code='citizen'). The year filter
+                 is a NATURALIZATION-TRACKING tool — a todo list of players
+                 moving toward NT eligibility on the 5-year residency clock.
+                 A birthright citizen is eligible by birth, has no clock and
+                 needs no date, so they are not on that journey and belong in
+                 NO bucket: not "Date not set", not "Eligible now", and they
+                 must never contribute to a bucket count.
+
+    NOTE on the 'citizen' code: `compute_eligibility_status` returns it from
+    TWO branches — nationality_status='bahraini' with origin_country NULL
+    (born citizen) AND nationality_status='foreign_ancestry'. Both are
+    birthright-eligible with no residency clock, so both are excluded here.
+    This keys off the ENGINE's status_code on purpose; do NOT re-derive the
+    citizen condition from raw columns.
     """
     def get(field):
         if hasattr(player, "get"):
@@ -411,6 +431,10 @@ def eligibility_year_bucket(player) -> str:
         return getattr(player, field, None)
 
     code = compute_eligibility_status(player).get("status_code")
+
+    # Birthright citizens are outside the naturalization-tracking scope.
+    if code == "citizen":
+        return None
 
     if code == "eligible_now":
         return "now"
@@ -425,7 +449,7 @@ def eligibility_year_bucket(player) -> str:
         year = max(_ELIG_YEAR_MIN, elig_date.year)
         return "later" if year > _ELIG_YEAR_MAX else str(year)
 
-    # 'citizen' (birthright — no date), 'unknown', 'not_eligible'
+    # 'unknown', 'not_eligible' — genuinely missing/undetermined date.
     return "unset"
 
 
@@ -436,11 +460,17 @@ def bucket_players_by_eligibility_year(players) -> tuple[dict, dict]:
     Returns (bucket_by_player_id, counts_by_bucket_key). Counts are taken
     BEFORE any ?elig_year= filtering so the bar keeps rendering every
     non-empty bucket the coach can switch to.
+
+    Birthright citizens (bucket None) are omitted from BOTH maps: they get no
+    entry in bucket_by_player_id and add to no count. A bucket that is empty
+    once they are removed therefore renders no button at all.
     """
     bucket_by_id: dict = {}
     counts: dict = {}
     for p in players:
         key = eligibility_year_bucket(p)
+        if key is None:
+            continue
         bucket_by_id[p["id"] if hasattr(p, "get") else p.id] = key
         counts[key] = counts.get(key, 0) + 1
     return bucket_by_id, counts

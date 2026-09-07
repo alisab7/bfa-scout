@@ -10,6 +10,11 @@
   Only NON-EMPTY buckets get a button, and they always render in the fixed
   order: Eligible now | 2026 | 2027 | 2028 | More than 2028 | Date not set.
 
+  This bar is a NATURALIZATION todo list, so birthright citizens
+  (status_code='citizen') are excluded from every bucket AND every count — a
+  bucket left empty by that exclusion renders no button here. Their badge is
+  untouched, and the plain unfiltered grid still shows them.
+
   Context: elig_year_buttons (list of {key,label,count,url,active}),
            elig_year (active key or None), elig_year_clear_url.
   `oob=True` (set by players/_grid_hx.html) turns this into an htmx

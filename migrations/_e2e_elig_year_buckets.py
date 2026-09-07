@@ -11,6 +11,17 @@ value the eligibility ENGINE already produced for the badge
 no second date calculation — so a chip and the badge on the card can never
 disagree.
 
+BIRTHRIGHT CITIZENS ARE OUT OF SCOPE. The bar is a naturalization-tracking
+todo list; a player the engine classifies `status_code == 'citizen'` is
+eligible by birth, runs no 5-year residency clock and needs no date, so
+`eligibility_year_bucket` returns None for them. Two DIFFERENT scopes, both
+asserted below:
+  * counts/buttons — ALWAYS exclude them (Y13c/Y13d/Y6)
+  * the grid       — excludes them only when ?elig_year= is active; the plain
+                     unfiltered list is unchanged (Y13a/Y13e)
+Note `status_code == 'citizen'` covers BOTH `bahraini` + origin NULL (born
+citizen) and `foreign_ancestry` — this suite asserts both are excluded.
+
 This suite SEEDS EVERY FIXTURE IT ASSERTS ON (players AND a club) and drops
 them in `finally:` — it never SELECTs ambient DB rows.
 
@@ -26,6 +37,8 @@ them in `finally:` — it never SELECTs ambient DB rows.
   Y10 mover: add residency start + origin_country → moves unset → 2027
   Y11 an unknown ?elig_year= value is ignored (no silent empty list)
   Y12 the HTMX partial carries the bar as an hx-swap-oob fragment
+  Y13 birthright citizens are excluded from the year filter ENTIRELY
+      (no bucket, no count, no chip) but are untouched everywhere else
 """
 from __future__ import annotations
 
@@ -157,9 +170,13 @@ P_2028A = f"{PREFIX}-Y2028a"                  # in the seeded club
 P_2028B = f"{PREFIX}-Y2028b"                  # NOT in the seeded club
 P_LATER = f"{PREFIX}-Later"
 P_UNSET = f"{PREFIX}-Unset"                   # foreign_residency, no dates
-P_CITIZ = f"{PREFIX}-BornCitizen"             # bahraini, origin NULL
-P_MOVER = f"{PREFIX}-Mover"                   # starts unset, gains a countdown
+P_NATUN = f"{PREFIX}-NatUnset"                # naturalized, origin set, NO date
+P_NOTEL = f"{PREFIX}-NotEligible"             # nationality_status=not_eligible
+P_CITIZ = f"{PREFIX}-BornCitizen"             # bahraini, origin NULL → NO bucket
+P_ANCES = f"{PREFIX}-Ancestry"                # foreign_ancestry  → NO bucket
+P_MOVER = f"{PREFIX}-Mover"                   # naturalized: unset → 2027
 
+# Every seeded player that DOES land in a bucket.
 EXPECTED = {
     P_NOW: "now",
     P_2026: "2026",
@@ -168,16 +185,26 @@ EXPECTED = {
     P_2028B: "2028",
     P_LATER: "later",
     P_UNSET: "unset",
-    P_CITIZ: "unset",
+    P_NATUN: "unset",
+    P_NOTEL: "unset",
     P_MOVER: "unset",
 }
+
+# Seeded players the year filter must ignore COMPLETELY. Both resolve to
+# `compute_eligibility_status(...)['status_code'] == 'citizen'`: birthright
+# eligible, no residency clock, no date to track.
+EXCLUDED = {P_CITIZ, P_ANCES}
+
+N_SEEDED = len(EXPECTED) + len(EXCLUDED)
+
 BADGE_FOR_BUCKET = {
     "now": {"eligible_now"},
     "2026": {"eligible_future"},
     "2027": {"eligible_future"},
     "2028": {"eligible_future"},
     "later": {"eligible_future"},
-    "unset": {"citizen", "unknown", "not_eligible"},
+    # 'citizen' is NOT here any more: a birthright citizen has no bucket.
+    "unset": {"unknown", "not_eligible"},
 }
 
 ids = {}
@@ -235,9 +262,20 @@ with db() as conn, conn.cursor() as cur:
     ids[P_LATER] = mk(P_LATER, "foreign_residency", efrom=D_2029, in_club=True)
     # no resolvable date at all
     ids[P_UNSET] = mk(P_UNSET, "foreign_residency")
-    # born citizen: is_eligible_now=True but NO date → spec puts it in 'unset'
-    ids[P_CITIZ] = mk(P_CITIZ, "bahraini")
-    ids[P_MOVER] = mk(P_MOVER, "bahraini")
+    # NATURALIZED but genuinely missing a date (bahraini + origin, no residency
+    # start): the real todo-list case that MUST stay in 'Date not set'. The
+    # 'Other' placeholder origin is what the residents import writes.
+    ids[P_NATUN] = mk(P_NATUN, "bahraini", origin="Other")
+    # explicit not_eligible — also kept in 'Date not set'
+    ids[P_NOTEL] = mk(P_NOTEL, "not_eligible")
+    # BORN CITIZEN (bahraini, origin NULL) — in the seeded club on purpose, so
+    # Y6 can prove a bucket that is empty ONCE HE IS EXCLUDED renders no chip.
+    ids[P_CITIZ] = mk(P_CITIZ, "bahraini", in_club=True)
+    # foreign_ancestry — the OTHER branch that yields status_code 'citizen'
+    ids[P_ANCES] = mk(P_ANCES, "foreign_ancestry")
+    # mover: naturalized with the placeholder origin and no date → starts in
+    # 'unset', then gains a real origin + residency start → 2027
+    ids[P_MOVER] = mk(P_MOVER, "bahraini", origin="Other")
     conn.commit()
 print(f"  club={club_id} players={len(ids)}")
 
@@ -248,8 +286,8 @@ try:
     st, full, _ = http(admin, "GET", "/players/")
     chk("S0 /players renders 200", st == 200, f"status={st}")
     seen = cards(full)
-    chk("S1 all 9 seeded players visible unfiltered",
-        len(seen) == 9, f"seen={sorted(seen)}")
+    chk(f"S1 all {N_SEEDED} seeded players visible unfiltered",
+        len(seen) == N_SEEDED, f"seen={sorted(seen)}")
 
     print("\n=== Y1: ?elig_year=2028 → exactly the 2028 players ===")
     _, h, _ = http(admin, "GET", "/players/?elig_year=2028")
@@ -265,14 +303,21 @@ try:
     _, h, _ = http(admin, "GET", "/players/?elig_year=now")
     got = set(cards(h))
     chk("Y3 exactly {Now}", got == {P_NOW}, f"got={sorted(got)}")
-    chk("Y3b born citizen NOT in 'now' (spec: born citizens are 'Date not set')",
+    chk("Y3b born citizen NOT in 'now' (birthright citizens have no bucket)",
         P_CITIZ not in got)
 
     print("\n=== Y4: ?elig_year=unset → only no-resolvable-date players ===")
     _, h, _ = http(admin, "GET", "/players/?elig_year=unset")
     got = set(cards(h))
-    chk("Y4 exactly {Unset, BornCitizen, Mover}",
-        got == {P_UNSET, P_CITIZ, P_MOVER}, f"got={sorted(got)}")
+    chk("Y4a exactly {Unset, NatUnset, NotEligible, Mover}",
+        got == {P_UNSET, P_NATUN, P_NOTEL, P_MOVER}, f"got={sorted(got)}")
+    chk("Y4b naturalized-missing-a-date player is KEPT in 'Date not set'",
+        P_NATUN in got)
+    chk("Y4c not_eligible player is KEPT in 'Date not set'", P_NOTEL in got)
+    chk("Y4d BORN CITIZEN removed from 'Date not set'", P_CITIZ not in got,
+        f"got={sorted(got)}")
+    chk("Y4e foreign_ancestry player removed from 'Date not set'",
+        P_ANCES not in got, f"got={sorted(got)}")
 
     print("\n=== Y5: 2027 bucket + fixed button order ===")
     _, h, _ = http(admin, "GET", "/players/?elig_year=2027")
@@ -285,16 +330,23 @@ try:
         set(EXPECTED.values()) <= set(keys), f"keys={keys}")
 
     print("\n=== Y6: empty buckets render NO button (scoped by seeded club) ===")
+    # The seeded club holds Now + Y2028a + Later + the BORN CITIZEN. Before the
+    # exclusion the citizen would have produced an "unset (1)" chip; now the
+    # bucket is empty once he is removed, so it must render NO button at all.
     _, hc, _ = http(admin, "GET", f"/players/?club={club_id}")
     ck = [k for k, _, _ in chips(hc)]
     chk("Y6a club scope shows only now/2028/later buttons",
         ck == ["now", "2028", "later"], f"keys={ck}")
     chk("Y6b NO 2026 button", 'data-elig-year="2026"' not in bar_of(hc))
     chk("Y6c NO 2027 button", 'data-elig-year="2027"' not in bar_of(hc))
-    chk("Y6d NO unset button", 'data-elig-year="unset"' not in bar_of(hc))
+    chk("Y6d NO unset button — the club's only unset candidate is a born "
+        "citizen, and a bucket emptied by the exclusion renders nothing",
+        'data-elig-year="unset"' not in bar_of(hc))
     counts = {k: c for k, _, c in chips(hc)}
-    chk("Y6e counts reflect the club-filtered set",
+    chk("Y6e counts reflect the club-filtered set, born citizen excluded",
         counts == {"now": 1, "2028": 1, "later": 1}, f"counts={counts}")
+    chk("Y6f but the UNFILTERED club grid still shows the born citizen",
+        P_CITIZ in cards(hc), f"got={sorted(cards(hc))}")
 
     print("\n=== Y7: composition ?elig_year=2028&club=<club> → intersection ===")
     _, h, _ = http(admin, "GET", f"/players/?elig_year=2028&club={club_id}")
@@ -337,7 +389,7 @@ try:
                 bad.append((name, key, st_code))
     chk("Y9 every card's badge matches its bucket", not bad, f"mismatches={bad}")
 
-    print("\n=== Y10: mover gains a countdown → unset ⟶ 2027 ===")
+    print("\n=== Y10: naturalized mover gains a countdown → unset ⟶ 2027 ===")
     _, hu, _ = http(admin, "GET", "/players/?elig_year=unset")
     chk("Y10a mover starts in 'unset'", P_MOVER in cards(hu))
     with db() as conn, conn.cursor() as cur:
@@ -357,8 +409,10 @@ try:
 
     print("\n=== Y11: unknown ?elig_year= is ignored ===")
     _, hz, _ = http(admin, "GET", "/players/?elig_year=banana")
-    chk("Y11 bogus value falls back to unfiltered", len(cards(hz)) == 9,
-        f"n={len(cards(hz))}")
+    chk("Y11a bogus value falls back to unfiltered",
+        len(cards(hz)) == N_SEEDED, f"n={len(cards(hz))}")
+    chk("Y11b born citizen present on the unfiltered fallback too",
+        P_CITIZ in cards(hz))
 
     print("\n=== Y12: HTMX partial ships the bar out-of-band ===")
     hx = build_opener(HTTPCookieProcessor(admin_jar))
@@ -374,6 +428,68 @@ try:
         f"keys={[k for k, _, _ in chips(hx_html)]}")
     chk("Y12d HTMX response is a partial (no full page chrome)",
         "<html" not in hx_html.lower())
+
+    print("\n=== Y13: birthright citizens are OUT OF SCOPE for the year filter ===")
+    # Two DIFFERENT scopes, both asserted:
+    #   counts/buttons → always exclude them
+    #   the grid       → excludes them only while ?elig_year= is active
+    _, hplain, _ = http(admin, "GET", "/players/")
+    plain = cards(hplain)
+    chk("Y13a plain list (no year filter) STILL shows the born citizen",
+        P_CITIZ in plain, f"got={sorted(plain)}")
+    chk("Y13b plain list STILL shows the foreign_ancestry player",
+        P_ANCES in plain, f"got={sorted(plain)}")
+
+    leaked = []
+    for key in ORDER:
+        _, hk, _ = http(admin, "GET", f"/players/?elig_year={key}")
+        for nm in EXCLUDED:
+            if nm in cards(hk):
+                leaked.append((nm, key))
+    chk("Y13c excluded players appear in NO bucket at all (all 6 checked)",
+        not leaked, f"leaks={leaked}")
+
+    # A result set consisting ONLY of a birthright citizen must produce an
+    # EMPTY bar: no chip, therefore no count, therefore nothing to click.
+    for nm in sorted(EXCLUDED):
+        _, hq, _ = http(admin, "GET", f"/players/?q={nm}")
+        chk(f"Y13d {nm} alone → he is on the page…", nm in cards(hq),
+            f"got={sorted(cards(hq))}")
+        chk(f"Y13e …but renders ZERO chips (contributes to no count)",
+            chips(hq) == [], f"chips={chips(hq)}")
+
+    # Whole seeded set: the chip counts must sum to the bucketed players only,
+    # while the grid still shows every seeded player.
+    _, hall, _ = http(admin, "GET", f"/players/?q={PREFIX}")
+    all_cards = cards(hall)
+    total_counted = sum(c for _, _, c in chips(hall))
+    chk(f"Y13f grid shows all {N_SEEDED} seeded players unfiltered",
+        len(all_cards) == N_SEEDED, f"n={len(all_cards)}")
+    chk(f"Y13g chip counts sum to {len(EXPECTED)} — the {len(EXCLUDED)} "
+        f"birthright citizens are counted nowhere",
+        total_counted == len(EXPECTED),
+        f"sum={total_counted} chips={chips(hall)}")
+
+    # The BADGE is untouched by all of this.
+    cit_card = all_cards.get(P_CITIZ, "")
+    anc_card = all_cards.get(P_ANCES, "")
+    chk("Y13h born citizen's badge data-status is still 'citizen'",
+        badge_status(cit_card) == "citizen", f"status={badge_status(cit_card)}")
+    chk("Y13i born citizen's badge still READS 'Citizen'",
+        re.search(r'class="elig-text">\s*Citizen\s*<', cit_card) is not None)
+    chk("Y13j foreign_ancestry badge is still 'citizen' / reads 'Citizen'",
+        badge_status(anc_card) == "citizen"
+        and re.search(r'class="elig-text">\s*Citizen\s*<', anc_card) is not None,
+        f"status={badge_status(anc_card)}")
+
+    # The OTHER filters must not have learned about the exclusion.
+    _, he, _ = http(admin, "GET", "/players/?elig=eligible_now")
+    chk("Y13k the existing ?elig= filter still returns birthright citizens",
+        P_CITIZ in cards(he) and P_ANCES in cards(he),
+        f"got={sorted(cards(he))}")
+    _, hcl, _ = http(admin, "GET", f"/players/?club={club_id}")
+    chk("Y13l club filter alone still returns the born citizen",
+        P_CITIZ in cards(hcl), f"got={sorted(cards(hcl))}")
 
 finally:
     print("\n(cleanup)")
