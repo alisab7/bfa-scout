@@ -1,0 +1,46 @@
+{#
+  Eligibility-YEAR bucket bar for the players list.
+
+  Buckets come from `eligibility_year_bucket` in app/players/eligibility.py,
+  which reads the value the eligibility ENGINE already produced for the badge
+  (compute_eligibility_status / _resolve_eligibility_date) — so a chip and the
+  badge on the card can never disagree. Display layer only: no new column, no
+  second date calculation.
+
+  Only NON-EMPTY buckets get a button, and they always render in the fixed
+  order: Eligible now | 2026 | 2027 | 2028 | More than 2028 | Date not set.
+
+  Context: elig_year_buttons (list of {key,label,count,url,active}),
+           elig_year (active key or None), elig_year_clear_url.
+  `oob=True` (set by players/_grid_hx.html) turns this into an htmx
+  out-of-band swap so the bar refreshes when another filter changes.
+#}
+<div id="elig-year-bar"
+     class="flex items-center gap-2 mb-6 flex-wrap"
+     {% if oob %}hx-swap-oob="true"{% endif %}>
+  {% if elig_year_buttons %}
+    <span class="text-xs font-semibold mr-1" style="color:var(--text-muted);">
+      NT eligible from:
+    </span>
+    {% for b in elig_year_buttons %}
+      <a href="{{ b.url }}"
+         data-elig-year="{{ b.key }}"
+         data-active="{{ '1' if b.active else '0' }}"
+         class="px-3 py-2 rounded text-sm{% if b.active %} font-semibold{% endif %}"
+         style="{% if b.active %}background:var(--brand);border:1px solid var(--brand);color:#fff;{% else %}background:var(--bg);border:1px solid var(--border);color:var(--text);{% endif %}"
+         title="Players who become NT-eligible in this window">
+        {{ b.label }}
+        <span class="text-xs opacity-70">({{ b.count }})</span>
+      </a>
+    {% endfor %}
+    {% if elig_year %}
+      <a href="{{ elig_year_clear_url }}"
+         data-elig-year-clear="1"
+         class="px-3 py-2 rounded text-sm"
+         style="background:var(--bg);border:1px solid var(--border);color:var(--text-muted);"
+         title="Clear the eligibility-year filter">
+        Clear
+      </a>
+    {% endif %}
+  {% endif %}
+</div>

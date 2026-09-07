@@ -1,0 +1,6 @@
+{# HTMX response for the players list: the grid (swapped into #player-grid)
+   plus the eligibility-year bucket bar as an out-of-band swap, because the
+   bar lives outside the grid and its non-empty buckets change whenever
+   another filter changes. #}
+{% include 'players/_grid.html' %}
+{% with oob = True %}{% include 'players/_elig_year_bar.html' %}{% endwith %}

@@ -1,5 +1,89 @@
 # Changelog
 
+## Unreleased — /players: eligibility-YEAR bucket filter (2026-09-07)
+
+**What this is.** A coach on `/players` can now click a year bucket and see who
+becomes NT-eligible in that window: **Eligible now | 2026 | 2027 | 2028 | More
+than 2028 | Date not set** (fixed order, `?elig_year=now|2026|2027|2028|later|unset`).
+
+### Added
+- `eligibility_year_bucket()` + `ELIG_YEAR_BUCKETS` / `ELIG_YEAR_KEYS` in
+  `app/players/eligibility.py`. **Display layer only — no new column, no new
+  rule, no second date calculation.** The bucket is read off what the
+  eligibility engine already produced for the badge: `status_code` from
+  `compute_eligibility_status` decides now/future/none, and
+  `_resolve_eligibility_date` supplies the year for a future date. A player's
+  bucket therefore can never disagree with the badge on their row.
+- `app/templates/players/_elig_year_bar.html` — the bucket bar. Renders a
+  button ONLY for buckets that actually contain players in the current result
+  set (with a count), plus an active state and a Clear link. Styled with the
+  same tokens as the existing filter selects.
+- `app/templates/players/_grid_hx.html` — the HTMX response now ships the bar
+  as an `hx-swap-oob` fragment, so changing club/position/nationality live
+  refreshes which buckets exist instead of leaving stale buttons.
+- `migrations/_e2e_elig_year_buckets.py` — 34-assertion real-HTTP E2E. Seeds
+  its own club + 9 players spanning every bucket and drops them in `finally:`;
+  covers each bucket, non-empty-buttons-only + fixed order, an empty bucket
+  having NO button, composition with `club` / `elig` / `q`, active + clear,
+  badge-vs-bucket agreement on every card, and a player moving `unset → 2027`
+  after gaining a residency date + origin_country.
+
+### Changed
+- `players.list_players` reads `elig_year`, buckets the SQL result set in
+  Python (the bucket comes from a Python function, so it cannot live in the
+  `WHERE` clause) and intersects it with the existing filters. Unknown values
+  are ignored rather than 404-ing, matching the other filters. Bucket counts
+  are taken BEFORE the year filter so the coach can always switch buckets.
+- `players/list.html` carries `elig_year` through every HTMX `hx-include`.
+
+### Notes
+- **Born citizens land in "Date not set".** `nationality_status='bahraini'`
+  with `origin_country` NULL returns `status_code='citizen'` and
+  `is_eligible_now=True` but NO resolvable date, so per spec it buckets to
+  `unset`, not `now`. On the local DB that is 44 of 88 senior players (the
+  other 44 are `foreign_residency` with no dates at all, also `unset`), so
+  today the bar shows a single "Date not set (88)" button locally. On prod
+  the same rule will make `unset` the dominant bucket — flagged so we can
+  decide later whether born citizens deserve their own split.
+- `not_eligible` and `foreign_other` also bucket to `unset`, because the engine
+  resolves no eligibility date for them — again keeping bucket and badge in
+  agreement rather than inventing a date the badge doesn't use.
+
+## Unreleased — Bahrain entry dates: matching worksheet + guarded injection (2026-09-07)
+
+**What this is.** Management supplied actual Bahrain entry dates for ~19 of the
+imported residents, as short Arabic first names plus a month/year. This adds the
+two artefacts needed to turn those notes into verified data, without guessing.
+
+### Added
+- `exports/entry_dates_confirmation_worksheet.csv` — every note matched to
+  candidate prod players via `Report.xlsx` (English names) plus club/position/
+  birth-year hints. Carries confidence, alternative candidates, the reason for
+  each match, and a REVIEW flag. **Candidate generation only — no DB write.**
+- `exports/inject_entry_dates.sql` — guarded injection, applied only after Ali
+  confirms the worksheet. Matches on `player_id` AND `full_name`; fill-only
+  (`WHERE bahrain_residency_start_date IS NULL`) so an existing date is never
+  overwritten; one transaction with `ON_ERROR_STOP`; idempotent; prints
+  before/after and lists everything it skipped. Uncertain rows are isolated in
+  BLOCK 2 so they can be excluded.
+
+### Notes
+- Matches confirmed by Ali 2026-09-07: حسن ديارا → id 95 (Al-Ittifaq);
+  جنينهو → id 84 "Juninho", a PRE-EXISTING player (not part of the import),
+  who already holds 2022-08-01 while the note said 9/22 — Ali chose to keep
+  the stored date, so fill-only skips him and the run records the difference.
+  تايقو and عبدو excluded (no match / unresolved).
+- Partial dates (month/year) are stored as first-of-month; only ولينتوق carried
+  a day (20/9/23).
+- **17 of the 19 rows are `nationality_status='bahraini'` with
+  `origin_country` NULL.** `compute_eligibility_status` treats that as a
+  birthright citizen and IGNORES the residency date (Priority 2), so those dates
+  are stored correctly but change nothing on screen until `origin_country` is
+  filled in. Only WELLINGTON (foreign_residency) and Juninho (origin=Brazil) gain a live countdown.
+- Verified on a throwaway clone of production: name guard and fill-only both
+  demonstrated skipping, re-run changed nothing, and the eligibility outcomes
+  above were confirmed by calling `compute_eligibility_status` directly.
+
 ## v1.11.0 — `ship.sh`: one-command deploy with real SHA verification (2026-09-01)
 
 ### What this is

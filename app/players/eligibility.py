@@ -356,3 +356,91 @@ def delete_orphan_scores(conn, player_id: int, new_position_group_id: int) -> in
             (player_id, new_position_group_id)
         )
         return cur.rowcount or 0
+
+
+# ─── NT eligibility-YEAR buckets (players-list grouping, display layer) ──────
+#
+# GROUPING/DISPLAY LAYER ONLY. There is no new column, no new rule and no
+# second date calculation here: the bucket is read off what the eligibility
+# ENGINE already produced for the badge —
+#   * `compute_eligibility_status(player)['status_code']` decides now/future/none
+#   * `_resolve_eligibility_date(get)` supplies the YEAR for a future date
+# so a player's bucket can never disagree with the badge on their row.
+# If you are about to write date arithmetic in here, stop and read the
+# engine's value instead.
+#
+# Fixed display order — the players list renders these left-to-right and only
+# for buckets that actually contain players in the current result set.
+ELIG_YEAR_BUCKETS: tuple[tuple[str, str], ...] = (
+    ("now",   "Eligible now"),
+    ("2026",  "2026"),
+    ("2027",  "2027"),
+    ("2028",  "2028"),
+    ("later", "More than 2028"),
+    ("unset", "Date not set"),
+)
+
+# Accepted `?elig_year=` query-param values.
+ELIG_YEAR_KEYS: frozenset[str] = frozenset(k for k, _ in ELIG_YEAR_BUCKETS)
+
+# First and last NAMED year bucket. Anything later collapses into 'later'.
+_ELIG_YEAR_MIN = 2026
+_ELIG_YEAR_MAX = 2028
+
+
+def eligibility_year_bucket(player) -> str:
+    """
+    Which eligibility-year bucket this player belongs in.
+
+    Returns one of ELIG_YEAR_KEYS:
+      'now'    — the engine says eligible_now (resolved date <= today, i.e.
+                 the counting/residency or explicit-date route completed)
+      '2026' / '2027' / '2028'
+               — the engine says eligible_future and the resolved date falls
+                 in that year
+      'later'  — eligible_future with a resolved year >= 2029
+      'unset'  — the engine resolved no eligibility date for this player.
+                 NOTE this deliberately includes BORN CITIZENS
+                 (status_code='citizen', is_eligible_now=True, birthright —
+                 no date), per spec: they belong in "Date not set", NOT in
+                 "Eligible now". It also covers 'unknown' and 'not_eligible'.
+    """
+    def get(field):
+        if hasattr(player, "get"):
+            return player.get(field)
+        return getattr(player, field, None)
+
+    code = compute_eligibility_status(player).get("status_code")
+
+    if code == "eligible_now":
+        return "now"
+
+    if code == "eligible_future":
+        elig_date = _resolve_eligibility_date(get)
+        if elig_date is None:
+            # Unreachable: every eligible_future branch resolved a date.
+            return "unset"
+        # Clamp below the first named bucket so no player can fall through
+        # (only reachable if "today" is before _ELIG_YEAR_MIN).
+        year = max(_ELIG_YEAR_MIN, elig_date.year)
+        return "later" if year > _ELIG_YEAR_MAX else str(year)
+
+    # 'citizen' (birthright — no date), 'unknown', 'not_eligible'
+    return "unset"
+
+
+def bucket_players_by_eligibility_year(players) -> tuple[dict, dict]:
+    """
+    One pass over an already-fetched result set.
+
+    Returns (bucket_by_player_id, counts_by_bucket_key). Counts are taken
+    BEFORE any ?elig_year= filtering so the bar keeps rendering every
+    non-empty bucket the coach can switch to.
+    """
+    bucket_by_id: dict = {}
+    counts: dict = {}
+    for p in players:
+        key = eligibility_year_bucket(p)
+        bucket_by_id[p["id"] if hasattr(p, "get") else p.id] = key
+        counts[key] = counts.get(key, 0) + 1
+    return bucket_by_id, counts

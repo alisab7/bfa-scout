@@ -194,10 +194,56 @@ def _validate_photo(f):
 # Routes
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _elig_year_bar(players, elig_year):
+    """
+    Build the eligibility-YEAR bucket bar for an already-fetched result set.
+
+    Returns (visible_players, buttons, clear_url).
+
+    WHY PYTHON, NOT SQL: the bucket is read off `compute_eligibility_status`
+    / `_resolve_eligibility_date` (see app/players/eligibility.py) so it can
+    never disagree with the badge on the row. That is a Python function, so
+    the year filter is applied here, AFTER the SQL filters in
+    `_search_players` have run — the two therefore compose as an
+    intersection, and the per-bucket counts describe exactly the rows the
+    other filters left behind.
+
+    Counts (and therefore which buttons render) are computed on the
+    PRE-year-filter set, so the coach can always switch buckets; empty
+    buckets render NO button at all.
+    """
+    from app.players.eligibility import (
+        ELIG_YEAR_BUCKETS, bucket_players_by_eligibility_year,
+    )
+
+    bucket_by_id, counts = bucket_players_by_eligibility_year(players)
+
+    def _url(year_key):
+        args = {k: v for k, v in request.args.items(multi=False)
+                if k != 'elig_year' and v not in (None, '')}
+        if year_key:
+            args['elig_year'] = year_key
+        return url_for('players.list_players', **args)
+
+    buttons = [
+        {'key': key, 'label': label, 'count': counts[key],
+         'url': _url(key), 'active': (elig_year == key)}
+        for key, label in ELIG_YEAR_BUCKETS
+        if counts.get(key)
+    ]
+
+    if elig_year:
+        players = [p for p in players if bucket_by_id.get(p['id']) == elig_year]
+
+    return players, buttons, _url(None)
+
+
 @bp.route('/')
 @login_required
 @deny_youth_nt
 def list_players():
+    from app.players.eligibility import ELIG_YEAR_KEYS
+
     q       = request.args.get('q',    '').strip()
     pos_str = request.args.get('pos',  '').strip()
     pos_id  = int(pos_str) if pos_str.isdigit() else None
@@ -205,11 +251,26 @@ def list_players():
     # Phase 5c-3: nationality + club filters
     nat     = request.args.get('nat',  '').strip() or None
     club    = request.args.get('club', '').strip() or None
+    # Eligibility-YEAR bucket filter (now / 2026 / 2027 / 2028 / later / unset).
+    # Unknown values are ignored rather than 404-ing, matching the other filters.
+    elig_year = request.args.get('elig_year', '').strip() or None
+    if elig_year not in ELIG_YEAR_KEYS:
+        elig_year = None
 
     players = _search_players(q, pos_id, elig=elig, nat=nat, club=club)
+    players, elig_year_buttons, elig_year_clear_url = _elig_year_bar(players, elig_year)
 
     if request.headers.get('HX-Request'):
-        return render_template('players/_grid.html', players=players, age=_age)
+        # The bucket bar lives OUTSIDE #player-grid, so it rides along as an
+        # hx-swap-oob fragment — otherwise changing club/position via HTMX
+        # would leave a stale set of bucket buttons on screen.
+        return render_template(
+            'players/_grid_hx.html',
+            players=players, age=_age,
+            elig_year=elig_year,
+            elig_year_buttons=elig_year_buttons,
+            elig_year_clear_url=elig_year_clear_url,
+        )
 
     position_groups = _load_position_picker()
     from app.players.clubs import get_clubs_grouped
@@ -224,6 +285,9 @@ def list_players():
         elig=elig,
         nat=nat,
         club=club,
+        elig_year=elig_year,
+        elig_year_buttons=elig_year_buttons,
+        elig_year_clear_url=elig_year_clear_url,
         clubs_premier=clubs_grouped.get('premier', []),
         clubs_first=clubs_grouped.get('first', []),
     )

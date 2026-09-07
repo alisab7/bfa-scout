@@ -66,7 +66,7 @@
       hx-get="{{ url_for('players.list_players') }}"
       hx-trigger="input changed delay:300ms"
       hx-target="#player-grid"
-      hx-include="[name='pos'], [name='elig']">
+      hx-include="[name='pos'], [name='elig'], [name='elig_year']">
 
     <select
       name="pos"
@@ -75,7 +75,7 @@
       hx-get="{{ url_for('players.list_players') }}"
       hx-trigger="change"
       hx-target="#player-grid"
-      hx-include="[name='q'], [name='elig']">
+      hx-include="[name='q'], [name='elig'], [name='elig_year']">
       <option value="" {% if not pos_id %}selected{% endif %}>All positions</option>
       {% for group in position_groups %}
         <optgroup label="{{ group.group_name }}">
@@ -96,7 +96,7 @@
       hx-get="{{ url_for('players.list_players') }}"
       hx-trigger="change"
       hx-target="#player-grid"
-      hx-include="[name='q'], [name='pos'], [name='nat'], [name='club']">
+      hx-include="[name='q'], [name='pos'], [name='nat'], [name='club'], [name='elig_year']">
       <option value=""             {% if not elig %}selected{% endif %}>All eligibility statuses</option>
       <option value="eligible_now" {% if elig == 'eligible_now' %}selected{% endif %}>✅ Eligible now</option>
       <option value="pending"      {% if elig == 'pending'      %}selected{% endif %}>⏳ Pending (future)</option>
@@ -112,7 +112,7 @@
       hx-get="{{ url_for('players.list_players') }}"
       hx-trigger="change"
       hx-target="#player-grid"
-      hx-include="[name='q'], [name='pos'], [name='elig'], [name='club']">
+      hx-include="[name='q'], [name='pos'], [name='elig'], [name='club'], [name='elig_year']">
       <option value="" {% if not nat %}selected{% endif %}>All nationalities</option>
       {% for code, label in NATIONALITY_CHOICES %}
         <option value="{{ code }}" {% if nat == code %}selected{% endif %}>
@@ -129,7 +129,7 @@
       hx-get="{{ url_for('players.list_players') }}"
       hx-trigger="change"
       hx-target="#player-grid"
-      hx-include="[name='q'], [name='pos'], [name='elig'], [name='nat']">
+      hx-include="[name='q'], [name='pos'], [name='elig'], [name='nat'], [name='elig_year']">
       <option value="" {% if not club %}selected{% endif %}>All clubs</option>
       <optgroup label="Premier League">
         {% for c in clubs_premier %}
@@ -143,7 +143,15 @@
       </optgroup>
       <option value="other" {% if club == 'other' %}selected{% endif %}>Other / free text</option>
     </select>
+
+    {# Eligibility-YEAR bucket, chosen via the chips below. Hidden field so an
+       HTMX change to any other filter keeps the active bucket (the chips
+       themselves are plain links / full page loads). #}
+    <input type="hidden" name="elig_year" value="{{ elig_year or '' }}">
   </div>
+
+  {# Eligibility-YEAR buckets — non-empty buckets only, fixed order. #}
+  {% include 'players/_elig_year_bar.html' %}
 
   <div id="player-grid" class="player-grid">
     {% include 'players/_grid.html' %}
