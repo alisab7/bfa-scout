@@ -1,0 +1,37 @@
+# Build context for the app image (Dockerfile does `COPY . .`).
+#
+# Without this file every secret in the repo directory was baked into the
+# image layers: .env.production, the Cloudflare origin TLS private key, and
+# the full .git history. None of them were web-reachable (nginx only
+# proxy_passes; Werkzeug blocks /static traversal), but anyone holding the
+# image — `docker save`, a registry push, a container escape — held them all.
+#
+# Nothing below is needed inside the app image:
+#   - env vars arrive at runtime via compose `env_file: .env.production`
+#   - nginx reads its certs through its own bind mount, not this image
+#   - the build SHA arrives as the GIT_SHA build arg (ship.sh), not via .git
+
+# ── Secrets ──────────────────────────────────────────────────────────────
+.env
+.env.*
+nginx/certs/
+*.key
+*.pem
+*.dump
+*.sql.gz
+
+# ── VCS and tooling ──────────────────────────────────────────────────────
+.git
+.gitignore
+.dockerignore
+.claude/
+cowork_*_prompt.md
+
+# ── Local-only and generated ─────────────────────────────────────────────
+venv/
+.venv/
+exports/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
